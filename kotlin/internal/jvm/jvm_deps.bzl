@@ -18,6 +18,20 @@ load(
 )
 load("//kotlin/internal/jvm:associates.bzl", _associate_utils = "associate_utils")
 
+_MAVEN_WORKSPACED = [
+    "androidsdk",
+    "maven",
+    "rules_jvm_external++maven+maven",
+    "instantandroid_maven",
+    "rules_jvm_external++maven+instantandroid_maven",
+    "instantandroid_maven_neverlink",
+    "rules_jvm_external++maven+instantandroid_maven_neverlink",
+    "instantandroid_maven_hacks",
+    "rules_jvm_external++maven+instantandroid_maven_hacks",
+    "com_github_jetbrains_kotlin",
+    "rules_jvm_external++maven+com_github_jetbrains_kotlin",
+]
+
 def _java_info(target):
     return target[JavaInfo] if JavaInfo in target else None
 
@@ -38,11 +52,14 @@ def _jvm_deps(ctx, toolchains, associate_deps, deps = [], deps_java_infos = [], 
     # Reduced classpath, exclude transitive deps from compilation
     if (toolchains.kt.experimental_prune_transitive_deps and
         not "kt_experimental_prune_transitive_deps_incompatible" in ctx.attr.tags):
-        transitive = [
-            d.compile_jars
-            for d in dep_infos
-        ]
+        transitive_jars = []
+        for d in dep_infos:
+            for jar in d.transitive_compile_time_jars.to_list():
+                if jar.owner.workspace_name in _MAVEN_WORKSPACED:
+                    transitive_jars.append(jar)
+        transitive = [d.compile_jars for d in dep_infos]
     else:
+        transitive_jars = []
         transitive = [
             d.compile_jars
             for d in dep_infos
@@ -51,7 +68,7 @@ def _jvm_deps(ctx, toolchains, associate_deps, deps = [], deps_java_infos = [], 
             for d in dep_infos
         ]
 
-    compile_depset_list = depset(transitive = transitive + [associates.jars]).to_list()
+    compile_depset_list = depset(transitive = transitive + [associates.jars], direct = transitive_jars).to_list()
     compile_depset_list_filtered = [jar for jar in compile_depset_list if not _sets.contains(associates.abi_jar_set, jar)]
 
     return struct(

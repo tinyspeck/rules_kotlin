@@ -1,19 +1,7 @@
-# Copyright 2018 The Bazel Authors. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#    http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 load(
-    "@bazel_skylib//lib:sets.bzl",
-    _sets = "sets",
+    "@bazel_tools//tools/jdk:toolchain_utils.bzl",
+    "find_java_runtime_toolchain",
+    "find_java_toolchain",
 )
 load(
     "@rules_java//java:defs.bzl",
@@ -22,8 +10,6 @@ load(
 )
 load(
     "//kotlin/internal:defs.bzl",
-    _JAVA_RUNTIME_TOOLCHAIN_TYPE = "JAVA_RUNTIME_TOOLCHAIN_TYPE",
-    _JAVA_TOOLCHAIN_TYPE = "JAVA_TOOLCHAIN_TYPE",
     _KtCompilerPluginInfo = "KtCompilerPluginInfo",
     _KtJvmInfo = "KtJvmInfo",
     _KtPluginConfiguration = "KtPluginConfiguration",
@@ -46,21 +32,15 @@ load(
     _plugin_mappers = "mappers",
 )
 load(
+    "//kotlin/internal/utils:sets.bzl",
+    _sets = "sets",
+)
+load(
     "//kotlin/internal/utils:utils.bzl",
     _utils = "utils",
 )
 
 # UTILITY ##############################################################################################################
-def find_java_toolchain(ctx, target):
-    if _JAVA_TOOLCHAIN_TYPE in ctx.toolchains:
-        return ctx.toolchains[_JAVA_TOOLCHAIN_TYPE].java
-    return target[java_common.JavaToolchainInfo]
-
-def find_java_runtime_toolchain(ctx, target):
-    if _JAVA_RUNTIME_TOOLCHAIN_TYPE in ctx.toolchains:
-        return ctx.toolchains[_JAVA_RUNTIME_TOOLCHAIN_TYPE].java_runtime
-    return target[java_common.JavaRuntimeInfo]
-
 def _java_info(target):
     return target[JavaInfo] if JavaInfo in target else None
 
@@ -105,13 +85,13 @@ def _compiler_toolchains(ctx):
 def _fail_if_invalid_associate_deps(associate_deps, deps):
     """Verifies associates not included in target deps."""
     diff = _sets.intersection(
-        _sets.make([x.label for x in associate_deps]),
-        _sets.make([x.label for x in deps]),
+        _sets.copy_of([x.label for x in associate_deps]),
+        _sets.copy_of([x.label for x in deps]),
     )
-    if _sets.length(diff) > 0:
+    if diff:
         fail(
             "\n------\nTargets should only be put in associates= or deps=, not both:\n%s" %
-            ",\n ".join(["    %s" % x for x in _sets.to_list(diff)]),
+            ",\n ".join(["    %s" % x for x in list(diff)]),
         )
 
 def _java_infos_to_compile_jars(java_infos):

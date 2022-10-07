@@ -271,6 +271,11 @@ _common_attr = utils.add_dicts(
             default = [],
             allow_files = [".srcjar", ".kt", ".java"],
         ),
+        "_experimental_prune_transitive_deps": attr.label(
+            doc = """If enabled, compilation is performed against only direct dependencies.
+            Transitive deps required for compilation must be explicitly added""",
+            default = Label("//kotlin/settings:experimental_prune_transitive_deps"),
+        ),
         "_use_auto_exec_groups": attr.bool(default = False),
     },
 )
