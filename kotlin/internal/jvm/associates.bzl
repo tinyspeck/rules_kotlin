@@ -24,21 +24,40 @@ load(
     "//kotlin/internal/utils:utils.bzl",
     _utils = "utils",
 )
+load(
+    "@bazel_skylib//rules:common_settings.bzl",
+    "BuildSettingInfo",
+)
+
+def _collect_module_jars(ctx, associates):
+    jars = []
+    if (ctx.attr._experimental_exclude_assocate_compile_jars_from_associates[BuildSettingInfo].value and
+        not "kt_experimental_exclude_assocate_compile_jars_from_associates_incompatible" in ctx.attr.tags):
+        for a in associates:
+            jars.extend([java_outputs.ijar for java_outputs in a.java_outputs])
+    else:
+        for a in associates:
+            jars.extend(a.compile_jars.to_list())
+    return jars
 
 def _get_associates(ctx):
     """Creates a struct of associates meta data"""
 
     associates = getattr(ctx.attr, "associates", [])
-    if not bool(associates):
+    if not associates:
         return struct(
             targets = [],
             module_name = _utils.derive_module_name(ctx),
             jars = [],
         )
     elif ctx.attr.module_name:
-        fail("if associates have been set then module_name cannot be provided")
+        fail("If associates have been set then module_name cannot be provided")
     else:
-        jars = [depset([a], transitive = a[_KtJvmInfo].module_jars) for a in associates]
+        associates_jars = _collect_module_jars(ctx, [a[JavaInfo] for a in associates])
+        if not associates_jars:
+            fail("Found associates without jars")
+
+        jars = [depset(associates_jars, transitive = a[_KtJvmInfo].module_jars) for a in associates]
         module_names = _sets.copy_of([x[_KtJvmInfo].module_name for x in associates])
         if len(module_names) > 1:
             fail("Dependencies from several different kotlin modules cannot be associated. " +
@@ -60,12 +79,7 @@ def _flatten_jars(nested_jars_depset):
     the nested_jars targets, which themselves are depsets.  This function is intended to be called
     lazily form within Args.add_all(map_each) as it collapses depsets.
     """
-    compile_jars_depsets = [
-        target[JavaInfo].compile_jars
-        for target in nested_jars_depset.to_list()
-        if target[JavaInfo].compile_jars
-    ]
-    return [file.path for file in depset(transitive = compile_jars_depsets).to_list()]
+    return [file.path for file in nested_jars_depset.to_list()]
 
 associate_utils = struct(
     get_associates = _get_associates,

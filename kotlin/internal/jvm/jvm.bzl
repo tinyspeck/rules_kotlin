@@ -258,6 +258,12 @@ _common_attr = utils.add_dicts(
             default = {},
             mandatory = False,
         ),
+        "_experimental_exclude_assocate_compile_jars_from_associates": attr.label(
+            doc = """If enabled the compile jars will be removed from the associates preventing unintended internal
+            dependencies from being leaked into dependent modules.
+            """,
+            default = Label("//kotlin/settings:experimental_exclude_assocate_compile_jars_from_associates"),
+        ),
         "_use_auto_exec_groups": attr.bool(default = False),
     },
 )
