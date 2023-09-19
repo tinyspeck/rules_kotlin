@@ -38,6 +38,19 @@ def _collect_module_jars(ctx, associates):
     else:
         for a in associates:
             jars.extend(a.compile_jars.to_list())
+
+    if ctx.attr._experimental_compile_against_associate_runtime_jar[BuildSettingInfo].value:
+        # Iterate over the associates and strip out the ijars and replace them
+        # with the header jars. Duplicates that exist will be filtered out when
+        # this function returns the results as a depset again
+        jars_to_swap_map = {}
+        for a in associates:
+            for java_outputs in a.java_outputs:
+                jars_to_swap_map[java_outputs.ijar] = java_outputs.class_jar
+        if jars_to_swap_map:
+            jars = depset(jars, transitive = []).to_list()
+            jars = [jar for jar in jars if jar not in jars_to_swap_map]
+            jars.extend(jars_to_swap_map.values())
     return jars
 
 def _get_associates(ctx):

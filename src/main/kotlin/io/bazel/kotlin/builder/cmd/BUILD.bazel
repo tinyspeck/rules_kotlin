@@ -1,5 +1,11 @@
 load("//src/main/kotlin:bootstrap.bzl", "kt_bootstrap_binary", "kt_bootstrap_library")
 
+java_import(
+    name = "jvm-abi-gen",
+    jars = ["//src/main/kotlin:jvm-abi-gen"],
+    visibility = ["//visibility:public"],
+)
+
 kt_bootstrap_library(
     name = "build_lib",
     srcs = ["Build.kt"],
@@ -15,7 +21,7 @@ kt_bootstrap_library(
 kt_bootstrap_binary(
     name = "build",
     data = [
-        "//kotlin/compiler:jvm-abi-gen",
+        ":jvm-abi-gen",
         "//kotlin/compiler:kotlin-annotation-processing",
         "//kotlin/compiler:kotlin-compiler",
         "//kotlin/compiler:kotlin-reflect",
@@ -33,7 +39,7 @@ kt_bootstrap_binary(
         "-D@com_github_jetbrains_kotlinx...serialization-core-jvm=$(rlocationpath @kotlinx_serialization_core_jvm//jar)",
         "-D@com_github_jetbrains_kotlinx...serialization-json=$(rlocationpath @kotlinx_serialization_json//jar)",
         "-D@com_github_jetbrains_kotlinx...serialization-json-jvm=$(rlocationpath @kotlinx_serialization_json_jvm//jar)",
-        "-D@com_github_jetbrains_kotlin...jvm-abi-gen=$(rlocationpath //kotlin/compiler:jvm-abi-gen)",
+        "-D@com_github_jetbrains_kotlin...jvm-abi-gen=$(rlocationpath :jvm-abi-gen)",
         "-D@com_github_jetbrains_kotlin...kotlin-compiler=$(rlocationpath //kotlin/compiler:kotlin-compiler)",
         "-D@com_github_jetbrains_kotlin...kapt=$(rlocationpath //kotlin/compiler:kotlin-annotation-processing)",
         "-D@rules_kotlin...jdeps-gen=$(rlocationpath //src/main/kotlin:jdeps-gen)",

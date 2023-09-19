@@ -101,7 +101,7 @@ kotlin_compiler_git_repository = repository_rule(
         ),
         "_template": attr.label(
             doc = "repository build file template",
-            default = ":BUILD.com_github_jetbrains_kotlin.bazel",
+            default = "BUILD.com_github_jetbrains_kotlin.bazel",
         ),
     },
 )

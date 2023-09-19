@@ -15,6 +15,12 @@
 load("@rules_java//java:defs.bzl", "java_binary", "java_import")
 
 java_import(
+    name = "jvm-abi-gen",
+    jars = ["jvm-abi-gen-1.9.20-with-DataClasses-SourceDebugExtension-NestedClasses-SortedOrder-Companions-InlineDebugInfo.jar"],
+    visibility = ["//visibility:public"],
+)
+
+java_import(
     name = "worker",
     jars = ["kotlin_worker.jar"],
 )
@@ -38,8 +44,8 @@ java_binary(
     name = "build",
     data = [
         ":jdeps-gen",
+        ":jvm-abi-gen",
         ":skip-code-gen",
-        "//kotlin/compiler:jvm-abi-gen",
         "//kotlin/compiler:kotlin-annotation-processing",
         "//kotlin/compiler:kotlin-compiler",
         "//kotlin/compiler:kotlin-reflect",
@@ -55,7 +61,7 @@ java_binary(
         "-D@com_github_jetbrains_kotlinx...serialization-core-jvm=$(rlocationpath @kotlinx_serialization_core_jvm//jar)",
         "-D@com_github_jetbrains_kotlinx...serialization-json=$(rlocationpath @kotlinx_serialization_json//jar)",
         "-D@com_github_jetbrains_kotlinx...serialization-json-jvm=$(rlocationpath @kotlinx_serialization_json_jvm//jar)",
-        "-D@com_github_jetbrains_kotlin...jvm-abi-gen=$(rlocationpath //kotlin/compiler:jvm-abi-gen)",
+        "-D@com_github_jetbrains_kotlin...jvm-abi-gen=$(rlocationpath :jvm-abi-gen)",
         "-D@com_github_jetbrains_kotlin...kotlin-compiler=$(rlocationpath //kotlin/compiler:kotlin-compiler)",
         "-D@com_github_jetbrains_kotlin...kapt=$(rlocationpath //kotlin/compiler:kotlin-annotation-processing)",
         "-D@rules_kotlin...jdeps-gen=$(rlocationpath //src/main/kotlin:jdeps-gen)",

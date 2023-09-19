@@ -6,6 +6,12 @@ exports_files(
     visibility = ["//src:__subpackages__"],
 )
 
+filegroup(
+    name = "jvm-abi-gen",
+    srcs = ["jvm-abi-gen-1.9.20-with-DataClasses-SourceDebugExtension-NestedClasses-SortedOrder-Companions-InlineDebugInfo.jar"],
+    visibility = ["//visibility:public"],
+)
+
 jar_jar(
     name = "skip-code-gen",
     input_jar = "//src/main/kotlin/io/bazel/kotlin/plugin:skip-code-gen_deploy.jar",
@@ -36,6 +42,7 @@ release_archive(
     name = "pkg",
     srcs = [
         ":jdeps-gen.jar",
+        ":jvm-abi-gen-1.9.20-with-DataClasses-SourceDebugExtension-NestedClasses-SortedOrder-Companions-InlineDebugInfo.jar",
         ":skip-code-gen.jar",
     ],
     package_dir = "src/main/kotlin",  # explicitly set the package directory, as there are no parent release_archives.

@@ -170,6 +170,20 @@ def _jvm_deps(ctx, toolchains, deps, associates, runtime_deps = []):
             for d in dep_infos
         ]
 
+    if ctx.attr._experimental_compile_against_associate_runtime_jar[BuildSettingInfo].value:
+        # Iterate over the associates and strip out the ijars and replace them
+        # with the header jars. Duplicates that exist will be filtered out when
+        # this function returns the results as a depset again
+        jars_to_swap_map = {}
+        for a in associates:
+            for java_outputs in a.java_outputs:
+                jars_to_swap_map[java_outputs.ijar] = java_outputs.class_jar
+        if jars_to_swap_map:
+            transitive_jars = depset(transitive_jars, transitive = transitive).to_list()
+            transitive = []
+            transitive_jars = [jar for jar in transitive_jars if jar not in jars_to_swap_map]
+            transitive_jars.extend(jars_to_swap_map.values())
+
     return struct(
         deps = dep_infos,
         provided_deps = dep_infos,
@@ -831,30 +845,6 @@ def _run_kt_java_builder_actions(
     has_kt_sources = srcs.kt or srcs.src_jars
     ap_generated_src_jar = None
 
-    # Run KAPT
-    if has_kt_sources and annotation_processors:
-        kapt_outputs = _run_kapt_builder_actions(
-            ctx,
-            rule_kind = rule_kind,
-            toolchains = toolchains,
-            srcs = srcs,
-            associates = associates,
-            compile_deps = compile_deps,
-            deps_artifacts = deps_artifacts,
-            annotation_processors = annotation_processors,
-            transitive_runtime_jars = transitive_runtime_jars,
-            plugins = plugins,
-        )
-        generated_kapt_src_jars.append(kapt_outputs.ap_generated_src_jar)
-        output_jars.append(kapt_outputs.kapt_generated_class_jar)
-        kt_stubs_for_java.append(
-            JavaInfo(
-                compile_jar = kapt_outputs.kapt_generated_stub_jar,
-                output_jar = kapt_outputs.kapt_generated_stub_jar,
-                neverlink = True,
-            ),
-        )
-
     # Run KSP
     if has_kt_sources and ksp_annotation_processors:
         ksp_outputs = _run_ksp_builder_actions(
@@ -912,8 +902,7 @@ def _run_kt_java_builder_actions(
 
         compile_jars.append(kt_compile_jar)
         output_jars.append(kt_runtime_jar)
-        if not annotation_processors or not srcs.kt:
-            kt_stubs_for_java.append(JavaInfo(compile_jar = kt_compile_jar, output_jar = kt_runtime_jar, neverlink = True))
+        kt_stubs_for_java.append(JavaInfo(compile_jar = kt_compile_jar, output_jar = kt_runtime_jar, neverlink = True))
 
         kt_java_info = JavaInfo(
             output_jar = kt_runtime_jar,
