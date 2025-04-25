@@ -33,6 +33,6 @@ class WorkingDirectoryContext(
   }
 
   override fun close() {
-    Files.walk(dir).sorted(Comparator.reverseOrder()).forEach(Files::delete)
+    //Files.walk(dir).sorted(Comparator.reverseOrder()).forEach(Files::delete)
   }
 }

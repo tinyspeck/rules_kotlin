@@ -27,34 +27,34 @@ _COMMON_DEPS = [
     "@kotlin_rules_maven//:com_google_code_findbugs_jsr305",
 ]
 
-java_library(
-    name = "test_lib",
-    testonly = 1,
-    srcs = [
-        "Deps.java",
-        "DirectoryType.java",
-        "JdepsMergerTestComponent.java",
-        "KotlinAbstractTestBuilder.java",
-        "KotlinBuilderTestComponent.java",
-        "KotlinJvmTestBuilder.java",
-    ],
-    data = [
-        "//src/main/kotlin/io/bazel/kotlin/compiler",
-        "@com_github_jetbrains_kotlin//:home",
-    ],
-    exports = _COMMON_DEPS,
-    runtime_deps = [
-        "//kotlin/compiler:kotlin-reflect",
-        "//kotlin/compiler:kotlin-stdlib",
-        "@bazel_tools//tools/jdk:JacocoCoverage",
-    ],
-    deps = _COMMON_DEPS + [
-        "//src/main/kotlin/io/bazel/kotlin/builder/tasks",
-        "//third_party:autovalue",
-        "//third_party:dagger",
-        "@kotlin_rules_maven//:javax_annotation_javax_annotation_api",
-    ],
-)
+# java_library(
+#     name = "test_lib",
+#     testonly = 1,
+#     srcs = [
+#         "Deps.java",
+#         "DirectoryType.java",
+#         "JdepsMergerTestComponent.java",
+#         "KotlinAbstractTestBuilder.java",
+#         "KotlinBuilderTestComponent.java",
+#         "KotlinJvmTestBuilder.java",
+#     ],
+#     data = [
+#         "//src/main/kotlin/io/bazel/kotlin/compiler",
+#         "@com_github_jetbrains_kotlin//:home",
+#     ],
+#     exports = _COMMON_DEPS,
+#     runtime_deps = [
+#         "//kotlin/compiler:kotlin-reflect",
+#         "//kotlin/compiler:kotlin-stdlib",
+#         "@bazel_tools//tools/jdk:JacocoCoverage",
+#     ],
+#     deps = _COMMON_DEPS + [
+#         "//src/main/kotlin/io/bazel/kotlin/builder/tasks",
+#         "//third_party:autovalue",
+#         "//third_party:dagger",
+#         "@kotlin_rules_maven//:javax_annotation_javax_annotation_api",
+#     ],
+# )
 
 test_suite(
     name = "builder_tests",

@@ -33,6 +33,7 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.Paths
 import java.util.regex.Pattern
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -215,41 +216,45 @@ internal constructor(
 
       with(root.directoriesBuilder) {
         val moduleName = argMap.mandatorySingle(KotlinBuilderFlags.MODULE_NAME)
+        val modulePath = moduleName.split("-").first().replace("_", "/")
+
+        val modifiedWorkingDir = Paths.get("/tmp/_kotlinc/$modulePath/$moduleName")
+
         classes =
-          workingDir.resolveNewDirectories(getOutputDirPath(moduleName, "classes")).toString()
+          modifiedWorkingDir.resolveNewDirectories(getOutputDirPath(moduleName, "classes")).toString()
         javaClasses =
-          workingDir
+          modifiedWorkingDir
             .resolveNewDirectories(
               getOutputDirPath(moduleName, "java_classes"),
             ).toString()
         if (argMap.hasAll(KotlinBuilderFlags.ABI_JAR)) {
           abiClasses =
-            workingDir
+            modifiedWorkingDir
               .resolveNewDirectories(
                 getOutputDirPath(moduleName, "abi_classes"),
               ).toString()
         }
         generatedClasses =
-          workingDir
+          modifiedWorkingDir
             .resolveNewDirectories(getOutputDirPath(moduleName, "generated_classes"))
             .toString()
         temp =
-          workingDir
+          modifiedWorkingDir
             .resolveNewDirectories(
               getOutputDirPath(moduleName, "temp"),
             ).toString()
         generatedSources =
-          workingDir
+          modifiedWorkingDir
             .resolveNewDirectories(getOutputDirPath(moduleName, "generated_sources"))
             .toString()
         generatedJavaSources =
-          workingDir
+          modifiedWorkingDir
             .resolveNewDirectories(getOutputDirPath(moduleName, "generated_java_sources"))
             .toString()
         generatedStubClasses =
-          workingDir.resolveNewDirectories(getOutputDirPath(moduleName, "stubs")).toString()
+          modifiedWorkingDir.resolveNewDirectories(getOutputDirPath(moduleName, "stubs")).toString()
         coverageMetadataClasses =
-          workingDir
+          modifiedWorkingDir
             .resolveNewDirectories(getOutputDirPath(moduleName, "coverage-metadata"))
             .toString()
       }

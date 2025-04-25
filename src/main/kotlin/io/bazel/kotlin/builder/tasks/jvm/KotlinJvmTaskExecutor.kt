@@ -64,6 +64,9 @@ class KotlinJvmTaskExecutor
           sequenceOf(
             runCatching {
               context.execute("kotlinc") {
+
+                context.execute("create instrumented jar", ::createClasspathSnapshots)
+
                 if (compileKotlin) {
                   compileKotlin(
                     context,

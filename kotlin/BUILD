@@ -35,39 +35,39 @@ release_archive(
     ],
 )
 
-[
-    stardoc(
-        name = doc,
-        out = "%s.md" % doc,
-        input = "%s.bzl" % doc,
-        deps = [
-            "//kotlin/internal",
-        ],
-    )
-    for doc in [
-        "jvm",
-        "lint",
-        "core",
-        "repositories.doc",
-    ]
-]
+# [
+#     stardoc(
+#         name = doc,
+#         out = "%s.md" % doc,
+#         input = "%s.bzl" % doc,
+#         deps = [
+#             "//kotlin/internal",
+#         ],
+#     )
+#     for doc in [
+#         "jvm",
+#         "lint",
+#         "core",
+#         "repositories.doc",
+#     ]
+# ]
 
-genrule(
-    name = "stardoc",
-    srcs = [doc for doc in [
-        "jvm",
-        "lint",
-        "core",
-        "repositories.doc",
-    ]],
-    outs = ["kotlin.md"],
-    cmd = """
-    for md in $(SRCS); do
-      cat "$$md" >> $@
-    done
-    """,
-    executable = True,
-    visibility = [
-        "//visibility:public",
-    ],
-)
+# genrule(
+#     name = "stardoc",
+#     srcs = [doc for doc in [
+#         "jvm",
+#         "lint",
+#         "core",
+#         "repositories.doc",
+#     ]],
+#     outs = ["kotlin.md"],
+#     cmd = """
+#     for md in $(SRCS); do
+#       cat "$$md" >> $@
+#     done
+#     """,
+#     executable = True,
+#     visibility = [
+#         "//visibility:public",
+#     ],
+# )

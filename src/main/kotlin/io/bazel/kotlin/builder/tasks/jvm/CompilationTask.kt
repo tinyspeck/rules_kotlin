@@ -35,6 +35,7 @@ import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.ObjectOutputStream
+import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.nio.file.Files.isDirectory
 import java.nio.file.Files.walk
@@ -312,8 +313,11 @@ private fun JvmCompilationTask.runKspPlugin(
     baseArgs(overrides)
       .plus(kspArgs(plugins))
       .flag("-d", directories.generatedClasses)
-      .values(inputs.kotlinSourcesList)
       .values(inputs.javaSourcesList)
+      .values(inputs.kotlinSourcesList)
+//      .values(inputs.javaSourcesList.map { "$ROOT/$it" })
+//      .values(inputs.kotlinSourcesList.map { "$ROOT/$it" })
+      .value("-XPlugin='voodoo'")
       .list()
       .let { args ->
         context.executeCompilerTask(
@@ -426,6 +430,28 @@ internal fun JvmCompilationTask.createGeneratedKspKotlinSrcJar() {
   }
 }
 
+internal fun JvmCompilationTask.createClasspathSnapshots() {
+  inputs.classpathList.forEach {
+    ClasspathSnapshotGenerator(Paths.get(it), Paths.get("$it.snapshot"), SnapshotGranularity.CLASS_MEMBER_LEVEL).run()
+  }
+}
+
+internal fun JvmCompilationTask.createClasspathSnapshotsPaths(): List<String> {
+  return inputs.classpathList.map { it: String ->
+    "$it.snapshot"
+  }
+}
+
+
+val ROOT: String by lazy {
+  FileSystems
+    .getDefault()
+    .getPath("")
+    .toAbsolutePath()
+    .toString() + File.separator
+}
+
+
 /**
  * Compiles Kotlin sources to classes. Does not compile Java sources.
  */
@@ -445,9 +471,20 @@ fun JvmCompilationTask.compileKotlin(
           options = inputs.compilerPluginOptionsList,
           classpath = inputs.compilerPluginClasspathList,
         )
-    ).values(inputs.javaSourcesList)
+      )
+      .values(inputs.javaSourcesList)
       .values(inputs.kotlinSourcesList)
-      .flag("-d", directories.classes)
+//      .values(inputs.javaSourcesList.map { if (it.startsWith("/var/folders")) it else "$ROOT/$it" })
+//      .values(inputs.javaSourcesList.map { if (it.startsWith("/var/folders")) it else "$ROOT/$it" })
+      //.flag("-d", directories.classes)
+      .flag("-snapshot")
+      .paths(
+        createClasspathSnapshotsPaths(),
+      ) {
+        it
+          .map(Path::toString)
+          .joinToString(File.pathSeparator)
+      }
       .list()
       .let {
         context.whenTracing {
