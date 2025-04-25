@@ -90,7 +90,8 @@ internal constructor(
       INSTRUMENT_COVERAGE("--instrument_coverage"),
       KSP_GENERATED_JAVA_SRCJAR("--ksp_generated_java_srcjar"),
       KSP_OPTS("--ksp_opts"),
-	  BUILD_TOOLS_API("--build_tools_api"),
+      BUILD_TOOLS_API("--build_tools_api"),
+      INCREMENTAL_COMPILATION("--incremental_compilation"),
     }
   }
 
@@ -182,6 +183,9 @@ internal constructor(
       }
       argMap.optionalSingle(KotlinBuilderFlags.BUILD_TOOLS_API)?.let {
         buildToolsApi = it == "true"
+      }
+      argMap.optionalSingle(KotlinBuilderFlags.INCREMENTAL_COMPILATION)?.let {
+        incrementalCompilation = it == "true"
       }
       this
     }

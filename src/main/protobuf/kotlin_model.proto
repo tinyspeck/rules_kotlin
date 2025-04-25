@@ -93,6 +93,8 @@ message CompilationTaskInfo {
     repeated string ksp_opts = 16;
     // New Build Tools API. Required for incremental compilation.
     bool build_tools_api = 17;
+    // Enable incremental compilation.
+    bool incremental_compilation = 18;
 }
 
 // Nested messages not marked with stable could be refactored.

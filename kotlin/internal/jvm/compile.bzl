@@ -513,6 +513,7 @@ def _run_kt_builder_action(
     args.add("--reduced_classpath_mode", toolchains.kt.experimental_reduce_classpath_mode)
     args.add("--treat_internal_as_private_in_abi_jar", toolchains.kt.experimental_treat_internal_as_private_in_abi_jars)
     args.add("--build_tools_api", toolchains.kt.experimental_build_tools_api)
+    args.add("--incremental_compilation", toolchains.kt.experimental_incremental_compilation)
     args.add("--remove_private_classes_in_abi_jar", toolchains.kt.experimental_remove_private_classes_in_abi_jars)
     args.add("--preserve_declaration_order", experimental_preserve_declaration_order)
     args.add("--remove_data_class_copy_if_constructor_is_private", experimental_remove_data_class_copy_if_constructor_is_private)
