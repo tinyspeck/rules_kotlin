@@ -33,6 +33,7 @@ import org.jetbrains.kotlin.incremental.createDirectory
 import org.jetbrains.kotlin.ir.util.toIrConst
 import org.jetbrains.kotlin.js.parser.parse
 import org.jetbrains.kotlin.incremental.extractKotlinSourcesFromFreeCompilerArguments
+import org.jetbrains.kotlin.incremental.storage.RelocatableFileToPathConverter
 import java.io.File
 import java.nio.file.FileSystems
 import java.nio.file.Path
@@ -114,15 +115,15 @@ class BazelK2JVMCompiler {
 
     val projectId = ProjectId.ProjectUUID(UUID.randomUUID())
     val service = CompilationService.loadImplementation(this.javaClass.classLoader!!)
-    var result: CompilationResult
 
     val executionConfig = service.makeCompilerExecutionStrategyConfiguration()
+
+    val incrementalDir = Paths.get("").toAbsolutePath().parent.resolve("_kotlin_incremental/$packagePath/$moduleName/$type")
+
     val compilationConfig = service.makeJvmCompilationConfiguration().apply {
 
       useIncrementalCompilation(
-        //workingDirectory = File("/tmp/rules_kotlin") /*mode.kotlicWorkingDir.toFile()*/,
-        workingDirectory = File("/tmp/_kotlinc/$packagePath/$moduleName/$type") /*mode.kotlicWorkingDir.toFile()*/,
-        //workingDirectory = File(workingKotlinDir!!),
+        workingDirectory = incrementalDir.toFile(),
         // For Bazel, this will always be ToBeCalculated. We don't have a way to get the sources changes from the last build.
         sourcesChanges = SourcesChanges.ToBeCalculated,
         approachParameters = ClasspathSnapshotBasedIncrementalCompilationApproachParameters(
@@ -135,7 +136,7 @@ class BazelK2JVMCompiler {
            * The shrunk classpath snapshot, a result of the previous compilation. Could point to a non-existent file.
            * At the successful end of the compilation, the shrunk version of the [newClasspathSnapshotFiles] will be stored at this path.
            */
-          shrunkClasspathSnapshot = File("/tmp/_kotlinc/snapshots/$moduleName/$type/shrunk-classpath-snapshot.bin").apply { parentFile?.createDirectory() }
+          shrunkClasspathSnapshot = incrementalDir.resolve("shrunk-classpath-snapshot.bin").toFile().apply { parentFile?.createDirectory() }
         ),
 
         options = makeClasspathSnapshotBasedIncrementalCompilationConfiguration().apply {
@@ -146,7 +147,7 @@ class BazelK2JVMCompiler {
             // Managed by [setRootProjectDir]
             // Default value is `null`
             //
-            //setRootProjectDir(File("/Users/ekerber/.cache/bazel/761a41d4bb2526edbfd3eae076bd7b1d/execroot/_main"))
+            setRootProjectDir(incrementalDir.resolve("_main").toFile())
             // The build directory, used for computing relative paths in the incremental compilation caches.
             //
             // If it is not specified, incremental compilation caches will be non-relocatable.
@@ -154,7 +155,7 @@ class BazelK2JVMCompiler {
             // Managed by [setBuildDir]
             // Default value is `null`
             //
-            setBuildDir(File("/tmp/_kotlinc"))
+            setBuildDir(incrementalDir.resolve("_kotlin_incremental").toFile())
             // The directories that the compiler will clean in the case of fallback to non-incremental compilation.
             //
             // The default ones are calculated in the case of a `null` value as a set of the incremental compilation working directory
@@ -196,7 +197,7 @@ class BazelK2JVMCompiler {
       useLogger(BasicKotlinLogger(true, "/tmp/kotlin_log/$packagePath/$moduleName/$type.log"))
       useKotlinScriptFilenameExtensions(listOf("kts"))
     }
-    result = service.compileJvm(projectId, executionConfig, compilationConfig, emptyList(), mutableArgs.toList())
+    val result = service.compileJvm(projectId, executionConfig, compilationConfig, emptyList(), mutableArgs.toList())
 
     return when(result) {
       CompilationResult.COMPILATION_SUCCESS -> ExitCode.OK
@@ -206,34 +207,3 @@ class BazelK2JVMCompiler {
     }
   }
 }
-
-// val shared = org.jetbrains.kotlin.buildtools.api.SharedApiClassesClassLoader()
-// val service = CompilationService.loadImplementation(ClassLoader.getSystemClassLoader())
-//shared.loadClass("org.jetbrains.kotlin.com.intellij.openapi.vfs.impl.ZipHandler"))
-// this.javaClass.classLoader?.loadClass("org.jetbrains.kotlin.com.intellij.openapi.vfs.impl.ZipHandler")
-
-/*
-
-sealed interface KotlincMode {
-
-  data object NonIncremental : KotlincMode
-
-  data class Incremental(
-      val rootProjectDir: AbsPath,
-      val buildDir: AbsPath,
-      val kotlicWorkingDir: AbsPath,
-      val kotlinSourceChanges: KotlinSourceChanges,
-      val classpathChanges: ClasspathChanges,
-      val kotlinClassUsageFile: AbsPath?,
-      val rebuildReason: RebuildReason?
-  ) : KotlincMode
-}
-
-enum class RebuildReason(val message: String) {
-  NO_LAST_BUILD_CONFIGURATION("Last build configuration not found"),
-  BUILD_CONFIGURATION_CHANGED("Build configuration has been changed"),
-  NO_LAST_KOTLIN_USED_CLASSES_FILE("kotlin-used-classes.json not found"),
-  NO_JVM_ABI_WORKING_DIR("jvm_abi_gen_working_dir not found")
-}
- */
-

@@ -25,8 +25,6 @@ object JDepsGenerator {
     path: String,
     jdepsContent: Deps.Dependencies,
   ) {
-    LOG.info(path)
-    LOG.info(jdepsContent.toString())
     Paths.get(path).also {
       Files.deleteIfExists(it)
       FileOutputStream(Files.createFile(it).toFile()).use(jdepsContent::writeTo)
@@ -38,8 +36,4 @@ object JDepsGenerator {
       it.ruleLabel = label
       it.build()
     }
-
-  val LOG by lazy {
-    BasicKotlinLogger(true, "/Users/ekerber/jdeps.log")
-  }
 }

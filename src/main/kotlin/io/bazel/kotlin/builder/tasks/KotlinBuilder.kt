@@ -218,7 +218,8 @@ internal constructor(
         val moduleName = argMap.mandatorySingle(KotlinBuilderFlags.MODULE_NAME)
         val modulePath = moduleName.split("-").first().replace("_", "/")
 
-        val modifiedWorkingDir = Paths.get("/tmp/_kotlinc/$modulePath/$moduleName")
+        //val modifiedWorkingDir = Paths.get("/tmp/_kotlinc/$modulePath/$moduleName")
+        val modifiedWorkingDir = Paths.get("").toAbsolutePath().parent.resolve("_kotlin_incremental/$modulePath/$moduleName")
 
         classes =
           modifiedWorkingDir.resolveNewDirectories(getOutputDirPath(moduleName, "classes")).toString()

@@ -276,8 +276,10 @@ private fun JvmCompilationTask.runKaptPlugin(
       ).plus(
         kaptArgs(context, plugins, "stubsAndApt"),
       ).flag("-d", directories.generatedClasses)
-      .values(inputs.kotlinSourcesList)
-      .values(inputs.javaSourcesList)
+//      .values(inputs.kotlinSourcesList)
+//      .values(inputs.javaSourcesList)
+      .values(inputs.javaSourcesList.map { if (Paths.get(it).isAbsolute) it else "$ROOT/$it" })
+      .values(inputs.kotlinSourcesList.map { if (Paths.get(it).isAbsolute) it else "$ROOT/$it" })
       .list()
       .let { args ->
         context.executeCompilerTask(
@@ -313,10 +315,10 @@ private fun JvmCompilationTask.runKspPlugin(
     baseArgs(overrides)
       .plus(kspArgs(plugins))
       .flag("-d", directories.generatedClasses)
-      .values(inputs.javaSourcesList)
-      .values(inputs.kotlinSourcesList)
-//      .values(inputs.javaSourcesList.map { "$ROOT/$it" })
-//      .values(inputs.kotlinSourcesList.map { "$ROOT/$it" })
+//      .values(inputs.javaSourcesList)
+//      .values(inputs.kotlinSourcesList)
+      .values(inputs.javaSourcesList.map { if (Paths.get(it).isAbsolute) it else "$ROOT/$it" })
+      .values(inputs.kotlinSourcesList.map { if (Paths.get(it).isAbsolute) it else "$ROOT/$it" })
       .value("-XPlugin='voodoo'")
       .list()
       .let { args ->
@@ -472,10 +474,10 @@ fun JvmCompilationTask.compileKotlin(
           classpath = inputs.compilerPluginClasspathList,
         )
       )
-      .values(inputs.javaSourcesList)
-      .values(inputs.kotlinSourcesList)
-//      .values(inputs.javaSourcesList.map { if (it.startsWith("/var/folders")) it else "$ROOT/$it" })
-//      .values(inputs.javaSourcesList.map { if (it.startsWith("/var/folders")) it else "$ROOT/$it" })
+//      .values(inputs.javaSourcesList)
+//      .values(inputs.kotlinSourcesList)
+      .values(inputs.javaSourcesList.map { if (Paths.get(it).isAbsolute) it else "$ROOT/$it" })
+      .values(inputs.kotlinSourcesList.map { if (Paths.get(it).isAbsolute) it else "$ROOT/$it" })
       //.flag("-d", directories.classes)
       .flag("-snapshot")
       .paths(
