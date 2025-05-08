@@ -83,6 +83,10 @@ message CompilationTaskInfo {
     string reduced_classpath_mode = 11;
     // KSP plugin options.
     repeated string ksp_opts = 12;
+    // New Build Tools API. Required for incremental compilation.
+    string build_tools_api = 13;
+    // Enable incremental compilation.
+    string incremental_compilation = 14;
 }
 
 // Nested messages not marked with stable could be refactored.

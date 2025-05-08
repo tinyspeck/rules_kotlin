@@ -87,6 +87,8 @@ internal constructor(
       INSTRUMENT_COVERAGE("--instrument_coverage"),
       KSP_GENERATED_JAVA_SRCJAR("--ksp_generated_java_srcjar"),
       KSP_OPTS("--ksp_opts"),
+      BUILD_TOOLS_API("--build_tools_api"),
+      INCREMENTAL_COMPILATION("--incremental_compilation"),
     }
   }
 
@@ -164,6 +166,8 @@ internal constructor(
         argMap.mandatorySingle(KotlinBuilderFlags.LANGUAGE_VERSION)
       strictKotlinDeps = argMap.mandatorySingle(KotlinBuilderFlags.STRICT_KOTLIN_DEPS)
       reducedClasspathMode = argMap.mandatorySingle(KotlinBuilderFlags.REDUCED_CLASSPATH_MODE)
+      buildToolsApi = argMap.mandatorySingle(KotlinBuilderFlags.BUILD_TOOLS_API)
+      incrementalCompilation = argMap.mandatorySingle(KotlinBuilderFlags.INCREMENTAL_COMPILATION)
       this
     }
 
@@ -218,8 +222,12 @@ internal constructor(
         val moduleName = argMap.mandatorySingle(KotlinBuilderFlags.MODULE_NAME)
         val modulePath = moduleName.split("-").first().replace("_", "/")
 
-        //val modifiedWorkingDir = Paths.get("/tmp/_kotlinc/$modulePath/$moduleName")
-        val modifiedWorkingDir = Paths.get("").toAbsolutePath().parent.resolve("_kotlin_incremental/$modulePath/$moduleName/${info.label}")
+        val modifiedWorkingDir = if (info.incrementalCompilation == "true") {
+          Paths.get("")
+            .toAbsolutePath().parent.resolve("_kotlin_incremental/$modulePath/$moduleName/${info.label}")
+        } else {
+          workingDir
+        }
 
         classes =
           modifiedWorkingDir.resolveNewDirectories(getOutputDirPath(moduleName, "classes")).toString()

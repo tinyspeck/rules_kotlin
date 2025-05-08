@@ -31,14 +31,12 @@ class WorkingDirectoryContext(
     val logger: Logger = Logger.getLogger(WorkingDirectoryContext::class.java.canonicalName)
 
     inline fun <T> use(forWork: WorkingDirectoryContext.() -> T) =
-      //WorkingDirectoryContext(Files.createTempDirectory("pwd")).use { wd ->
-      WorkingDirectoryContext(java.nio.file.Paths.get("**placeholder**")).use { wd ->
+      WorkingDirectoryContext(Files.createTempDirectory("pwd")).use { wd ->
         wd.forWork()
       }
   }
 
   override fun close() {
-    return
     kotlin
       .runCatching {
         Files.walk(dir).sorted(Comparator.reverseOrder()).forEach(Files::delete)

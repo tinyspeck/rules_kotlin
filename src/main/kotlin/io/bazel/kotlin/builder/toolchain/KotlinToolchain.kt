@@ -273,7 +273,7 @@ class KotlinToolchain private constructor(
     val id: String,
   )
 
-  open class KotlinCliToolInvoker internal constructor(
+  open class KotlincInvoker internal constructor(
     toolchain: KotlinToolchain,
     clazz: String,
   ) {
@@ -307,12 +307,16 @@ class KotlinToolchain private constructor(
   }
 
   @Singleton
-  class KotlincInvoker
-    @Inject
-    constructor(
-      toolchain: KotlinToolchain,
-    ) : KotlinCliToolInvoker(
-        toolchain.toolchainWithReflect(),
-        "io.bazel.kotlin.compiler.BazelK2JVMCompiler",
-      )
+  class KotlincInvokerBuilder @Inject constructor(
+    private val toolchain: KotlinToolchain
+  ) {
+    fun build(useExperimentalBuildToolsAPI: Boolean): KotlincInvoker {
+      val clazz = if (useExperimentalBuildToolsAPI) {
+        "io.bazel.kotlin.compiler.BuildToolsAPICompiler"
+      } else {
+        "io.bazel.kotlin.compiler.BazelK2JVMCompiler"
+      }
+      return KotlincInvoker(toolchain = toolchain, clazz = clazz)
+    }
+  }
 }

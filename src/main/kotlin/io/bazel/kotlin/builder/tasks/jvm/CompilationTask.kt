@@ -92,7 +92,12 @@ fun JvmCompilationTask.baseArgs(overrides: Map<String, String> = emptyMap()): Co
       overrides[LANGUAGE_VERSION_ARG] ?: info.toolchainInfo.common.languageVersion,
     ).flag("-jvm-target", info.toolchainInfo.jvm.jvmTarget)
     .flag("-module-name", info.moduleName)
-    .flag("-label", info.label)
+    .apply {
+      if (info.buildToolsApi == "true") {
+        value("-XPlugin='voodoo'")
+        flag("-label", info.label)
+      }
+    }
 }
 
 internal fun JvmCompilationTask.plugins(
@@ -320,7 +325,6 @@ private fun JvmCompilationTask.runKspPlugin(
       .values(inputs.kotlinSourcesList)
 //      .values(inputs.javaSourcesList.map { if (Paths.get(it).isAbsolute) it else "$ROOT/$it" })
 //      .values(inputs.kotlinSourcesList.map { if (Paths.get(it).isAbsolute) it else "$ROOT/$it" })
-      .value("-XPlugin='voodoo'")
       .list()
       .let { args ->
         context.executeCompilerTask(
@@ -480,13 +484,17 @@ fun JvmCompilationTask.compileKotlin(
 //      .values(inputs.javaSourcesList.map { if (Paths.get(it).isAbsolute) it else "$ROOT/$it" })
 //      .values(inputs.kotlinSourcesList.map { if (Paths.get(it).isAbsolute) it else "$ROOT/$it" })
       .flag("-d", directories.classes)
-      .flag("-snapshot")
-      .paths(
-        createClasspathSnapshotsPaths(),
-      ) {
-        it
-          .map(Path::toString)
-          .joinToString(File.pathSeparator)
+      .apply {
+        if (info.incrementalCompilation == "true") {
+          flag("-snapshot")
+          paths(
+            createClasspathSnapshotsPaths(),
+          ) {
+            it
+              .map(Path::toString)
+              .joinToString(File.pathSeparator)
+          }
+        }
       }
       .list()
       .let {
