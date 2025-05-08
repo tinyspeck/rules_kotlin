@@ -92,6 +92,7 @@ fun JvmCompilationTask.baseArgs(overrides: Map<String, String> = emptyMap()): Co
       overrides[LANGUAGE_VERSION_ARG] ?: info.toolchainInfo.common.languageVersion,
     ).flag("-jvm-target", info.toolchainInfo.jvm.jvmTarget)
     .flag("-module-name", info.moduleName)
+    .flag("-label", info.label)
 }
 
 internal fun JvmCompilationTask.plugins(
@@ -276,10 +277,10 @@ private fun JvmCompilationTask.runKaptPlugin(
       ).plus(
         kaptArgs(context, plugins, "stubsAndApt"),
       ).flag("-d", directories.generatedClasses)
-//      .values(inputs.kotlinSourcesList)
-//      .values(inputs.javaSourcesList)
-      .values(inputs.javaSourcesList.map { if (Paths.get(it).isAbsolute) it else "$ROOT/$it" })
-      .values(inputs.kotlinSourcesList.map { if (Paths.get(it).isAbsolute) it else "$ROOT/$it" })
+      .values(inputs.kotlinSourcesList)
+      .values(inputs.javaSourcesList)
+//      .values(inputs.javaSourcesList.map { if (Paths.get(it).isAbsolute) it else "$ROOT/$it" })
+//      .values(inputs.kotlinSourcesList.map { if (Paths.get(it).isAbsolute) it else "$ROOT/$it" })
       .list()
       .let { args ->
         context.executeCompilerTask(
@@ -315,10 +316,10 @@ private fun JvmCompilationTask.runKspPlugin(
     baseArgs(overrides)
       .plus(kspArgs(plugins))
       .flag("-d", directories.generatedClasses)
-//      .values(inputs.javaSourcesList)
-//      .values(inputs.kotlinSourcesList)
-      .values(inputs.javaSourcesList.map { if (Paths.get(it).isAbsolute) it else "$ROOT/$it" })
-      .values(inputs.kotlinSourcesList.map { if (Paths.get(it).isAbsolute) it else "$ROOT/$it" })
+      .values(inputs.javaSourcesList)
+      .values(inputs.kotlinSourcesList)
+//      .values(inputs.javaSourcesList.map { if (Paths.get(it).isAbsolute) it else "$ROOT/$it" })
+//      .values(inputs.kotlinSourcesList.map { if (Paths.get(it).isAbsolute) it else "$ROOT/$it" })
       .value("-XPlugin='voodoo'")
       .list()
       .let { args ->
@@ -474,11 +475,11 @@ fun JvmCompilationTask.compileKotlin(
           classpath = inputs.compilerPluginClasspathList,
         )
       )
-//      .values(inputs.javaSourcesList)
-//      .values(inputs.kotlinSourcesList)
-      .values(inputs.javaSourcesList.map { if (Paths.get(it).isAbsolute) it else "$ROOT/$it" })
-      .values(inputs.kotlinSourcesList.map { if (Paths.get(it).isAbsolute) it else "$ROOT/$it" })
-      //.flag("-d", directories.classes)
+      .values(inputs.javaSourcesList)
+      .values(inputs.kotlinSourcesList)
+//      .values(inputs.javaSourcesList.map { if (Paths.get(it).isAbsolute) it else "$ROOT/$it" })
+//      .values(inputs.kotlinSourcesList.map { if (Paths.get(it).isAbsolute) it else "$ROOT/$it" })
+      .flag("-d", directories.classes)
       .flag("-snapshot")
       .paths(
         createClasspathSnapshotsPaths(),

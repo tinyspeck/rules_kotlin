@@ -102,6 +102,8 @@ class BazelK2JVMCompiler {
       ?.map { File(it) }
       .orEmpty()
 
+    val label = extractSnapshot("-label", mutableArgs)!!
+
     val packagePath = mutableArgs.indexOf("-module-name").let {
       args[it + 1].split("-").first().replace("_", "/")
     }
@@ -118,7 +120,7 @@ class BazelK2JVMCompiler {
 
     val executionConfig = service.makeCompilerExecutionStrategyConfiguration()
 
-    val incrementalDir = Paths.get("").toAbsolutePath().parent.resolve("_kotlin_incremental/$packagePath/$moduleName/$type")
+    val incrementalDir = Paths.get("").toAbsolutePath().parent.resolve("_kotlin_incremental/$packagePath/$moduleName/$type/$label")
 
     val compilationConfig = service.makeJvmCompilationConfiguration().apply {
 
@@ -147,7 +149,7 @@ class BazelK2JVMCompiler {
             // Managed by [setRootProjectDir]
             // Default value is `null`
             //
-            setRootProjectDir(incrementalDir.resolve("_main").toFile())
+            // setRootProjectDir(incrementalDir.resolve("_main").toFile())
             // The build directory, used for computing relative paths in the incremental compilation caches.
             //
             // If it is not specified, incremental compilation caches will be non-relocatable.
@@ -155,7 +157,7 @@ class BazelK2JVMCompiler {
             // Managed by [setBuildDir]
             // Default value is `null`
             //
-            setBuildDir(incrementalDir.resolve("_kotlin_incremental").toFile())
+            // setBuildDir(incrementalDir.resolve("_kotlin_incremental").toFile())
             // The directories that the compiler will clean in the case of fallback to non-incremental compilation.
             //
             // The default ones are calculated in the case of a `null` value as a set of the incremental compilation working directory
@@ -169,7 +171,7 @@ class BazelK2JVMCompiler {
             // Managed by [usePreciseJavaTracking]
             // Default value is defined by implementation of the API
             //
-            usePreciseJavaTracking(false)
+            usePreciseJavaTracking(true)
             // Incremental compilation uses the PersistentHashMap of the intellij platform for storing caches.
             // An indicator whether the changes should remain in memory and not being flushed to the disk until we could mark the compilation as successful.
             //
