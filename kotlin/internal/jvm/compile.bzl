@@ -24,8 +24,6 @@ load(
 load("@rules_java//java:defs.bzl", "JavaInfo", "java_common")
 load(
     "//kotlin/internal:defs.bzl",
-    _JAVA_RUNTIME_TOOLCHAIN_TYPE = "JAVA_RUNTIME_TOOLCHAIN_TYPE",
-    _JAVA_TOOLCHAIN_TYPE = "JAVA_TOOLCHAIN_TYPE",
     _KtCompilerPluginInfo = "KtCompilerPluginInfo",
     _KtJvmInfo = "KtJvmInfo",
     _KtPluginConfiguration = "KtPluginConfiguration",
@@ -436,52 +434,6 @@ def _run_merge_jdeps_action(ctx, toolchains, jdeps, outputs, deps):
         toolchain = _TOOLCHAIN_TYPE,
     )
 
-def _run_kapt_builder_actions(
-        ctx,
-        rule_kind,
-        toolchains,
-        srcs,
-        associates,
-        compile_deps,
-        deps_artifacts,
-        annotation_processors,
-        transitive_runtime_jars,
-        plugins):
-    """Runs KAPT using the KotlinBuilder tool
-    Returns:
-        A struct containing KAPT outputs
-    """
-    ap_generated_src_jar = ctx.actions.declare_file(ctx.label.name + "-kapt-gensrc.jar")
-    kapt_generated_stub_jar = ctx.actions.declare_file(ctx.label.name + "-kapt-generated-stub.jar")
-    kapt_generated_class_jar = ctx.actions.declare_file(ctx.label.name + "-kapt-generated-class.jar")
-
-    _run_kt_builder_action(
-        ctx = ctx,
-        rule_kind = rule_kind,
-        toolchains = toolchains,
-        srcs = srcs,
-        generated_src_jars = [],
-        associates = associates,
-        compile_deps = compile_deps,
-        deps_artifacts = deps_artifacts,
-        annotation_processors = annotation_processors,
-        transitive_runtime_jars = transitive_runtime_jars,
-        plugins = plugins,
-        outputs = {
-            "generated_java_srcjar": ap_generated_src_jar,
-            "kapt_generated_stub_jar": kapt_generated_stub_jar,
-            "kapt_generated_class_jar": kapt_generated_class_jar,
-        },
-        build_kotlin = False,
-        mnemonic = "KotlinKapt",
-    )
-
-    return struct(
-        ap_generated_src_jar = ap_generated_src_jar,
-        kapt_generated_stub_jar = kapt_generated_stub_jar,
-        kapt_generated_class_jar = kapt_generated_class_jar,
-    )
-
 def _run_ksp_builder_actions(
         ctx,
         rule_kind,
@@ -546,10 +498,10 @@ def _run_kt_builder_action(
         args.add("--" + f, path)
 
     experimental_preserve_declaration_order = toolchains.kt.experimental_preserve_declaration_order
-    if 'kt_experimental_preserve_declaration_order_in_abi_plugin_incompatible' in ctx.attr.tags:
+    if "kt_experimental_preserve_declaration_order_in_abi_plugin_incompatible" in ctx.attr.tags:
         experimental_preserve_declaration_order = False
     experimental_remove_data_class_copy_if_constructor_is_private = toolchains.kt.experimental_remove_data_class_copy_if_constructor_is_private
-    if 'kt_experimental_preserve_declaration_order_in_abi_plugin_incompatible' in ctx.attr.tags:
+    if "kt_experimental_preserve_declaration_order_in_abi_plugin_incompatible" in ctx.attr.tags:
         experimental_remove_data_class_copy_if_constructor_is_private = False
 
     # Unwrap kotlinc_options/javac_options options or default to the ones being provided by the toolchain
@@ -560,6 +512,7 @@ def _run_kt_builder_action(
     args.add_all("--classpath", compile_deps.compile_jars)
     args.add("--reduced_classpath_mode", toolchains.kt.experimental_reduce_classpath_mode)
     args.add("--treat_internal_as_private_in_abi_jar", toolchains.kt.experimental_treat_internal_as_private_in_abi_jars)
+    args.add("--build_tools_api", toolchains.kt.experimental_build_tools_api)
     args.add("--remove_private_classes_in_abi_jar", toolchains.kt.experimental_remove_private_classes_in_abi_jars)
     args.add("--preserve_declaration_order", experimental_preserve_declaration_order)
     args.add("--remove_data_class_copy_if_constructor_is_private", experimental_remove_data_class_copy_if_constructor_is_private)

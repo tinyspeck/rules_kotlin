@@ -90,6 +90,7 @@ internal constructor(
       INSTRUMENT_COVERAGE("--instrument_coverage"),
       KSP_GENERATED_JAVA_SRCJAR("--ksp_generated_java_srcjar"),
       KSP_OPTS("--ksp_opts"),
+	  BUILD_TOOLS_API("--build_tools_api"),
     }
   }
 
@@ -178,6 +179,9 @@ internal constructor(
       }
       argMap.optionalSingle(KotlinBuilderFlags.ABI_JAR_REMOVE_DATA_CLASS_COPY_IF_CONSTRUCTOR_IS_PRIVATE)?.let {
         removeDataClassCopyIfConstructorIsPrivate = it == "true"
+      }
+      argMap.optionalSingle(KotlinBuilderFlags.BUILD_TOOLS_API)?.let {
+        buildToolsApi = it == "true"
       }
       this
     }

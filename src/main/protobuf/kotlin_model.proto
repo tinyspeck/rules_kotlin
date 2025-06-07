@@ -91,6 +91,8 @@ message CompilationTaskInfo {
     bool remove_data_class_copy_if_constructor_is_private = 15;
     // KSP plugin options.
     repeated string ksp_opts = 16;
+    // New Build Tools API. Required for incremental compilation.
+    bool build_tools_api = 17;
 }
 
 // Nested messages not marked with stable could be refactored.
