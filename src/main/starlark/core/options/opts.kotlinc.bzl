@@ -123,7 +123,7 @@ _KOPTS_ALL = {
         args = dict(
             default = "off",
             doc = "Specifies that a JVM default method should be generated for non-abstract Kotlin interface member.",
-            values = ["off", "enable", "disable", "compatibility", "all-compatibility", "all"],
+            values = ["off", "enable", "disable", "compatibility", "all-compatibility", "all", "no-compatibility"],
         ),
         type = attr.string,
         value_to_flag = {
@@ -133,6 +133,7 @@ _KOPTS_ALL = {
             "compatibility": ["-Xjvm-default=compatibility"],
             "all-compatibility": ["-Xjvm-default=all-compatibility"],
             "all": ["-Xjvm-default=all"],
+            "no-compatibility": ["-Xjvm-default=no-compatibility"],
         },
     ),
     "x_no_call_assertions": struct(
