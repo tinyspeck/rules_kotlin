@@ -168,6 +168,8 @@ message JvmCompilationTask {
       repeated string javac_flags = 15;
       // JDeps dependency artifacts
       repeated string deps_artifacts = 16;
+      // KSP processor options
+      repeated string ksp_opts = 17;
   }
 
   CompilationTaskInfo info = 1;

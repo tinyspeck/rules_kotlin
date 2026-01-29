@@ -472,6 +472,11 @@ def _run_ksp_builder_actions(
     if transitive_runtime_jars:
         args.add_all("--processor_classpath", transitive_runtime_jars)
 
+    # Pass KSP options if provided
+    ksp_opts = getattr(ctx.attr, "ksp_opts", {})
+    if ksp_opts:
+        args.add_all("--ksp_opts", _utils.dict_to_option_list(ksp_opts))
+
     # Run KSP2 via dedicated worker (separate from kotlinc worker)
     # Single action: staging + KSP2 + packaging all happen in the worker
     ctx.actions.run(

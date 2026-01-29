@@ -225,6 +225,10 @@ _common_attr = utils.add_dicts(
             providers = [_KotlincOptions],
             mandatory = False,
         ),
+        "ksp_opts": attr.string_dict(
+            doc = """KSP processor options to be used when compiling this target.""",
+            default = {},
+        ),
         "module_name": attr.string(
             doc = """The name of the module, if not provided the module name is derived from the label. --e.g.,
         `//some/package/path:label_name` is translated to
