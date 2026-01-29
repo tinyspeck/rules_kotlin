@@ -484,9 +484,17 @@ def _run_ksp_builder_actions(
     if transitive_runtime_jars:
         args.add_all("--processor_classpath", transitive_runtime_jars)
 
-    # Pass KSP processor options as key=value pairs
+    # Pass KSP processor options as key=value pairs (upstream: derived from
+    # kt_ksp_plugin targets via _KspPluginInfo.options).
     for key, value in ksp_options.items():
         args.add("--ksp_options", "%s=%s" % (key, value))
+
+    # Slack: additionally pass per-call KSP options from the ksp_opts rule attr.
+    # Our module.bzl computes these dynamically (e.g. Anvil merging/Dagger flags
+    # vary per module), which upstream's static per-plugin model can't express.
+    ksp_opts = getattr(ctx.attr, "ksp_opts", {})
+    if ksp_opts:
+        args.add_all("--ksp_opts", _utils.dict_to_option_list(ksp_opts))
 
     # Run KSP2 via dedicated worker (separate from kotlinc worker)
     # Single action: staging + KSP2 + packaging all happen in the worker

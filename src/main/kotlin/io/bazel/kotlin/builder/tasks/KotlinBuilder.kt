@@ -83,6 +83,7 @@ class KotlinBuilder(
       REDUCED_CLASSPATH_MODE("--reduced_classpath_mode"),
       INSTRUMENT_COVERAGE("--instrument_coverage"),
       BUILD_TOOLS_API("--build_tools_api"),
+      KSP_OPTS("--ksp_opts"),
     }
   }
 
@@ -281,6 +282,8 @@ class KotlinBuilder(
         addAllCompilerPluginClasspath(
           argMap.optional(KotlinBuilderFlags.COMPILER_PLUGIN_CLASS_PATH) ?: emptyList(),
         )
+
+        addAllKspOpts(argMap.optional(KotlinBuilderFlags.KSP_OPTS) ?: emptyList())
 
         argMap
           .optional(KotlinBuilderFlags.SOURCES)

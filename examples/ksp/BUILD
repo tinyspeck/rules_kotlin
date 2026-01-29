@@ -129,6 +129,10 @@ build_test(
 kt_jvm_library(
     name = "raw_ksp_coffee_app_lib",
     srcs = ["CoffeeAppModel.kt"],
+    ksp_opts = {
+        "arg1": "value1",
+        "arg2": "value2",
+    },
     plugins = [
         "//third_party:moshi",
     ],

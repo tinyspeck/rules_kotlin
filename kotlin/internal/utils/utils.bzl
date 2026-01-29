@@ -47,8 +47,19 @@ def _init_builder_args(ctx, rule_kind, module_name, kotlinc_options = None):
 
     return args
 
+def _dict_to_option_list(d):
+    """Converts a dictionary to a list of key=value strings.
+
+    Args:
+        d: Dictionary to convert
+    Returns:
+        List of strings in format "key=value"
+    """
+    return ["%s=%s" % (k, v) for k, v in d.items()]
+
 utils = struct(
     add_dicts = dicts.add,
     init_args = _init_builder_args,
     derive_module_name = _derive_module_name,
+    dict_to_option_list = _dict_to_option_list,
 )
