@@ -216,6 +216,8 @@ message JvmCompilationTask {
       repeated string deps_artifacts = 16;
       // Kotlin compiler plugins with explicit phase information.
       repeated Plugin plugins = 17;
+      // KSP processor options
+      repeated string ksp_opts = 18;
   }
 
   CompilationTaskInfo info = 1;
