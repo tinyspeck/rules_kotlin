@@ -88,6 +88,7 @@ class KotlinBuilder(
       INTERNAL_JVM_ABI_GEN_CLASSPATH("--internal_jvm_abi_gen_classpath"),
       INTERNAL_KAPT_CLASSPATH("--internal_kapt_classpath"),
       INTERNAL_JDEPS_GEN_CLASSPATH("--internal_jdeps_gen_classpath"),
+      KSP_OPTS("--ksp_opts"),
     }
   }
 
@@ -355,6 +356,8 @@ class KotlinBuilder(
             addAllCompilerPluginOptions(optionStrings)
           }
         }
+
+        addAllKspOpts(argMap.optional(KotlinBuilderFlags.KSP_OPTS) ?: emptyList())
 
         argMap
           .optional(KotlinBuilderFlags.SOURCES)

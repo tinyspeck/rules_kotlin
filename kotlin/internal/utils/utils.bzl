@@ -76,9 +76,20 @@ def _javac_jvm_target_flags(jvm_target, compiler_version = None):
             return ["--release", target_version]
     return ["-source", target_version, "-target", target_version]
 
+def _dict_to_option_list(d):
+    """Converts a dictionary to a list of key=value strings.
+
+    Args:
+        d: Dictionary to convert
+    Returns:
+        List of strings in format "key=value"
+    """
+    return ["%s=%s" % (k, v) for k, v in d.items()]
+
 utils = struct(
     add_dicts = dicts.add,
     init_args = _init_builder_args,
     derive_module_name = _derive_module_name,
     javac_jvm_target_flags = _javac_jvm_target_flags,
+    dict_to_option_list = _dict_to_option_list,
 )

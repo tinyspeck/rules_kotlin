@@ -145,6 +145,10 @@ _common_attr = utils.add_dicts(
             providers = [_KotlincOptions],
             mandatory = False,
         ),
+        "ksp_opts": attr.string_dict(
+            doc = """KSP processor options to be used when compiling this target.""",
+            default = {},
+        ),
         "manifest_lines": attr.string_list(
             doc = """Lines to add to the main section of the manifest of the output jar, each in the form `Name: value`.
         They follow the `Target-Label` and `Injecting-Rule-Kind` attributes the rules write. A line that repeats them,
