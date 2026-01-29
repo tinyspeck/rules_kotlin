@@ -32,7 +32,7 @@ load(
     _plugin_mappers = "mappers",
 )
 load(
-    "//kotlin/internal/utils:sets.bzl",
+    "@bazel_skylib//lib:sets.bzl",
     _sets = "sets",
 )
 load(
@@ -85,13 +85,13 @@ def _compiler_toolchains(ctx):
 def _fail_if_invalid_associate_deps(associate_deps, deps):
     """Verifies associates not included in target deps."""
     diff = _sets.intersection(
-        _sets.copy_of([x.label for x in associate_deps]),
-        _sets.copy_of([x.label for x in deps]),
+        _sets.make([x.label for x in associate_deps]),
+        _sets.make([x.label for x in deps]),
     )
-    if diff:
+    if _sets.length(diff) > 0:
         fail(
             "\n------\nTargets should only be put in associates= or deps=, not both:\n%s" %
-            ",\n ".join(["    %s" % x for x in list(diff)]),
+            ",\n ".join(["    %s" % x for x in _sets.to_list(diff)]),
         )
 
 def _java_infos_to_compile_jars(java_infos):
