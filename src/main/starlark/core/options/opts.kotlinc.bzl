@@ -204,6 +204,17 @@ default: 'first-only-warn' in language version 2.2+, 'first-only' in version 2.1
             True: ["-Xcontext-receivers"],
         },
     ),
+    "x_context_sensitive_resolution": struct(
+        flag = "-Xcontext-sensitive-resolution",
+        args = dict(
+            default = True,
+            doc = "Enable context-sensitive resolution for smarter name resolution (Kotlin 2.2+).",
+        ),
+        type = attr.bool,
+        value_to_flag = {
+            True: ["-Xcontext-sensitive-resolution"],
+        },
+    ),
     "x_emit_jvm_type_annotations": struct(
         flag = "-Xemit-jvm-type-annotations",
         args = dict(
