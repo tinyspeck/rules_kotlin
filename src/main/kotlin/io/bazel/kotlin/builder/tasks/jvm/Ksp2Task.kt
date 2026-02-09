@@ -66,6 +66,7 @@ class Ksp2Task : Work {
       JVM_TARGET("--jvm_target"),
       JDK_HOME("--jdk_home"),
       KSP_OPTIONS("--ksp_options"),
+      KSP_OPTS("--ksp_opts"),
     }
 
     fun parseKspOptions(entries: List<String>): Map<String, String> =
@@ -179,7 +180,13 @@ class Ksp2Task : Work {
       val processorUrls = processorClasspath.map { File(it).toURI().toURL() }.toTypedArray()
       val kspClassLoader = URLClassLoader(processorUrls, ClassLoader.getSystemClassLoader())
 
-      val processorOptions = parseKspOptions(argMap.optional(Ksp2Flags.KSP_OPTIONS) ?: emptyList())
+      // Upstream: options derived from kt_ksp_plugin targets (--ksp_options).
+      // Slack: additionally merge per-call options from the ksp_opts rule attr
+      // (--ksp_opts); these are computed dynamically by module.bzl and take
+      // precedence on key conflicts.
+      val processorOptions =
+        parseKspOptions(argMap.optional(Ksp2Flags.KSP_OPTIONS) ?: emptyList()) +
+          parseKspOptions(argMap.optional(Ksp2Flags.KSP_OPTS) ?: emptyList())
 
       // Load Ksp2Invoker via reflection (it's compiled against KSP2 classes)
       val invokerClass = kspClassLoader.loadClass("io.bazel.kotlin.ksp2.Ksp2Invoker")

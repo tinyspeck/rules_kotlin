@@ -37,6 +37,7 @@ class Ksp2Invoker(
    * Execute KSP2 with the given configuration.
    *
    * @param logLevel Logger level (0=ERROR, 1=WARN, 2=INFO, 3=LOGGING)
+   * @param processorOptions Options passed to symbol processors
    * @return Exit code (0 for success)
    */
   fun execute(
