@@ -80,6 +80,7 @@ class Ksp2Task : Work {
       JDK_HOME("--jdk_home"),
       KSP_OPTIONS("--ksp_options"),
       EXPERIMENTAL_PSI_RESOLUTION("--experimental_psi_resolution"),
+      KSP_OPTS("--ksp_opts"),
     }
 
     fun parseKspOptions(entries: List<String>): Map<String, String> =
@@ -229,7 +230,13 @@ class Ksp2Task : Work {
       val processorClasspath = argMap.optional(Ksp2Flags.PROCESSOR_CLASSPATH) ?: emptyList()
       val kspClassLoader = getKspClassLoader(processorClasspath, taskContext.inputDigests)
 
-      val processorOptions = parseKspOptions(argMap.optional(Ksp2Flags.KSP_OPTIONS) ?: emptyList())
+      // Upstream: options derived from kt_ksp_plugin targets (--ksp_options).
+      // Slack: additionally merge per-call options from the ksp_opts rule attr
+      // (--ksp_opts); these are computed dynamically by module.bzl and take
+      // precedence on key conflicts.
+      val processorOptions =
+        parseKspOptions(argMap.optional(Ksp2Flags.KSP_OPTIONS) ?: emptyList()) +
+          parseKspOptions(argMap.optional(Ksp2Flags.KSP_OPTS) ?: emptyList())
       val experimentalPsiResolution =
         argMap.optionalSingle(Ksp2Flags.EXPERIMENTAL_PSI_RESOLUTION)?.toBoolean() ?: false
 
