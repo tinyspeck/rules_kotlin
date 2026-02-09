@@ -65,6 +65,7 @@ class Ksp2Task : Work {
       API_VERSION("--api_version"),
       JVM_TARGET("--jvm_target"),
       JDK_HOME("--jdk_home"),
+      KSP_OPTS("--ksp_opts"),
     }
   }
 
@@ -196,8 +197,17 @@ class Ksp2Task : Work {
           String::class.java, // languageVersion
           String::class.java, // apiVersion
           File::class.java, // jdkHome
+          Map::class.java, // processorOptions
           Int::class.java, // logLevel
         )
+
+      // Parse KSP processor options from "key=value" format
+      val processorOptions =
+        argMap.optional(Ksp2Flags.KSP_OPTS)
+          ?.associate { opt ->
+            val (key, value) = opt.split('=', limit = 2)
+            key to value
+          } ?: emptyMap()
 
       // Execute KSP2
       val code =
@@ -218,6 +228,7 @@ class Ksp2Task : Work {
           argMap.optionalSingle(Ksp2Flags.LANGUAGE_VERSION),
           argMap.optionalSingle(Ksp2Flags.API_VERSION),
           argMap.optionalSingle(Ksp2Flags.JDK_HOME)?.let { File(it) },
+          processorOptions,
           1, // logLevel
         ) as Int
 
