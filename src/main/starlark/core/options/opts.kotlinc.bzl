@@ -257,6 +257,17 @@ default: 'first-only-warn' in language version 2.2+, 'first-only' in version 2.1
             True: ["-Xenable-incremental-compilation"],
         },
     ),
+    "x_explicit_backing_fields": struct(
+        flag = "-Xexplicit-backing-fields",
+        args = dict(
+            default = False,
+            doc = "Enable the experimental explicit backing fields language feature.",
+        ),
+        type = attr.bool,
+        value_to_flag = {
+            True: ["-Xexplicit-backing-fields"],
+        },
+    ),
     "x_explicit_api_mode": struct(
         flag = "-Xexplicit-api",
         args = dict(
