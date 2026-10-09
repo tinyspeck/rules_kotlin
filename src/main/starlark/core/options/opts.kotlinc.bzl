@@ -448,6 +448,20 @@ Migration to jvm_default:
             True: ["-Xmulti-platform"],
         },
     ),
+    "x_name_based_destructuring": struct(
+        args = dict(
+            default = "",
+            doc = "Enable name-based destructuring (Kotlin 2.3.20+). Options are 'only-syntax', 'name-mismatch', and 'complete'.",
+            values = ["", "only-syntax", "name-mismatch", "complete"],
+        ),
+        type = attr.string,
+        value_to_flag = {
+            "complete": ["-Xname-based-destructuring=complete"],
+            "name-mismatch": ["-Xname-based-destructuring=name-mismatch"],
+            "only-syntax": ["-Xname-based-destructuring=only-syntax"],
+        },
+        map_value_to_flag = None,
+    ),
     "x_no_call_assertions": struct(
         flag = "-Xno-call-assertions",
         args = dict(
