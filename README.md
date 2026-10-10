@@ -300,6 +300,39 @@ build --@rules_kotlin//kotlin/settings:experimental_build_tools_api=true
 Alternatively, enable it for a single toolchain via `define_kt_toolchain(experimental_build_tools_api = True)`
 or by giving the toolchain a `btapi_runtime`. Any of these switches is sufficient; all default to `False`.
 
+## Incremental compilation
+
+**Experimental.** With incremental compilation, a `KotlinCompile` action recompiles only the
+sources affected by a change instead of the whole target. It runs through the Build Tools API, and
+turns that on as well:
+
+```
+build --@rules_kotlin//kotlin/settings:experimental_incremental_compilation=true
+```
+
+or, for a single toolchain, `define_kt_toolchain(experimental_incremental_compilation = True)`.
+
+How it works:
+
+* The worker keeps the state of each target under `bazel-out/_kotlin_ic`: the compiler's
+  incremental caches, the classes, the ABI classes, and the jdeps of the previous compilation.
+  `bazel clean` removes it.
+* The worker computes the changed and removed sources from the input digests Bazel sends with each
+  work request. Changes in dependencies are detected from snapshots of the classpath entries,
+  which the worker caches by content.
+* Changes to the compilation configuration fall back to a full compile: the compiler options,
+  the compiler plugins and their options, the set of classpath entries, the direct dependencies,
+  and the requested outputs.
+* Since the outputs depend on state outside the action's inputs, the incremental `KotlinCompile`
+  actions are tagged `no-remote-cache-upload`. They can still be served from a remote cache.
+* Targets that run kapt, and targets with compiler plugin options that refer to the action's
+  directories (`{generatedClasses}`, `{stubs}`, `{temp}`, `{generatedSources}`), compile
+  non-incrementally.
+
+Incremental compilation needs the actions to run in persistent workers, which is the default.
+Actions that run another way, e.g. remotely, compile from scratch each time. Build with
+`--define=kt_trace=1` to see which sources the compiler recompiled and why.
+
 # Pruning transitive dependencies
 
 The experimental transitive dependency pruning mode normally removes every transitive dependency from the Kotlin
