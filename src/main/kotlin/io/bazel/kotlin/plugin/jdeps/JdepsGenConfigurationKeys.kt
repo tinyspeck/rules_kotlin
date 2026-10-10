@@ -41,4 +41,15 @@ object JdepsGenConfigurationKeys {
     CompilerConfigurationKey.create(
       JdepsGenCommandLineProcessor.FULL_CLASSPATH_OPTION.description,
     )
+
+  /**
+   * Whether the used dependencies recorded in an existing output file are merged into the written
+   * jdeps. Incremental compilation analyzes only the recompiled sources, possibly over several
+   * iterations, so the output accumulates the dependencies of the previous build and of every
+   * iteration.
+   */
+  val MERGE_EXISTING: CompilerConfigurationKey<Boolean> =
+    CompilerConfigurationKey.create(
+      JdepsGenCommandLineProcessor.MERGE_EXISTING_OPTION.description,
+    )
 }

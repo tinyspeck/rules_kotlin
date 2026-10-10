@@ -34,6 +34,13 @@ class JdepsGenCommandLineProcessor : CommandLineProcessor {
       )
     val STRICT_KOTLIN_DEPS_OPTION: CliOption =
       CliOption("strict_kotlin_deps", "<String>", "Report strict deps violations", required = true)
+    val MERGE_EXISTING_OPTION: CliOption =
+      CliOption(
+        "merge_existing",
+        "<Boolean>",
+        "Merge the used dependencies recorded in an existing output file into the written jdeps",
+        required = false,
+      )
   }
 
   override val pluginId: String
@@ -46,6 +53,7 @@ class JdepsGenCommandLineProcessor : CommandLineProcessor {
         DIRECT_DEPENDENCIES_OPTION,
         FULL_CLASSPATH_OPTION,
         STRICT_KOTLIN_DEPS_OPTION,
+        MERGE_EXISTING_OPTION,
       )
 
   override fun processOption(
@@ -81,6 +89,10 @@ class JdepsGenCommandLineProcessor : CommandLineProcessor {
           JdepsGenConfigurationKeys.STRICT_KOTLIN_DEPS,
           value,
         )
+      }
+
+      MERGE_EXISTING_OPTION -> {
+        configuration.put(JdepsGenConfigurationKeys.MERGE_EXISTING, value.toBoolean())
       }
 
       else -> {

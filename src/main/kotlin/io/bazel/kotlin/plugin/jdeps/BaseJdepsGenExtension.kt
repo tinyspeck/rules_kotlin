@@ -110,11 +110,23 @@ abstract class BaseJdepsGenExtension(
     // Build and write out deps.proto
     val jdepsOutput = configuration.getNotNull(JdepsGenConfigurationKeys.OUTPUT_JDEPS)
 
+    val explicitJars = explicitDeps.keys.toMutableSet()
+    val implicitJars = implicitDeps.keys.toMutableSet()
+    if (configuration.get(JdepsGenConfigurationKeys.MERGE_EXISTING, false)) {
+      readExistingJdeps(jdepsOutput)?.dependencyList?.forEach { dependency ->
+        when (dependency.kind) {
+          Deps.Dependency.Kind.EXPLICIT -> explicitJars.add(dependency.path)
+          Deps.Dependency.Kind.IMPLICIT -> implicitJars.add(dependency.path)
+          else -> {}
+        }
+      }
+    }
+
     val rootBuilder = Deps.Dependencies.newBuilder()
     rootBuilder.success = true
     rootBuilder.ruleLabel = targetLabel
 
-    val unusedDeps = directDeps.subtract(explicitDeps.keys)
+    val unusedDeps = directDeps.subtract(explicitJars)
     unusedDeps.forEach { jarPath ->
       val dependency = Deps.Dependency.newBuilder()
       dependency.kind = Deps.Dependency.Kind.UNUSED
@@ -122,14 +134,14 @@ abstract class BaseJdepsGenExtension(
       rootBuilder.addDependency(dependency)
     }
 
-    explicitDeps.forEach { (jarPath, _) ->
+    explicitJars.forEach { jarPath ->
       val dependency = Deps.Dependency.newBuilder()
       dependency.kind = Deps.Dependency.Kind.EXPLICIT
       dependency.path = jarPath
       rootBuilder.addDependency(dependency)
     }
 
-    implicitDeps.keys.subtract(explicitDeps.keys).forEach {
+    implicitJars.subtract(explicitJars).forEach {
       val dependency = Deps.Dependency.newBuilder()
       dependency.kind = Deps.Dependency.Kind.IMPLICIT
       dependency.path = it
@@ -140,6 +152,9 @@ abstract class BaseJdepsGenExtension(
       it.write(rootBuilder.buildSorted().toByteArray())
     }
   }
+
+  private fun readExistingJdeps(path: String): Deps.Dependencies? =
+    File(path).takeIf { it.isFile }?.inputStream()?.buffered()?.use(Deps.Dependencies::parseFrom)
 
   private fun doStrictDeps(
     compilerConfiguration: CompilerConfiguration,
