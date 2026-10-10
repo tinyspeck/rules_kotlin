@@ -753,6 +753,14 @@ def _run_kt_builder_action(
             args.add_all(flag, runtime_files)
             btapi_runtime_inputs.extend(runtime_files)
 
+    # The worker keeps incremental state outside of the action's sandbox, under
+    # bazel-out/_kotlin_ic, so its outputs depend on more than the declared inputs and must not
+    # populate a remote cache.
+    incremental_execution_requirements = {}
+    if toolchains.kt.experimental_incremental_compilation and mnemonic == "KotlinCompile":
+        args.add("--incremental_compilation", "true")
+        incremental_execution_requirements = {"no-remote-cache-upload": "1"}
+
     args.add_all("--sources", srcs.all_srcs, omit_if_empty = True)
     args.add_all("--source_jars", srcs.src_jars + generated_src_jars, omit_if_empty = True)
     args.add_all("--deps_artifacts", deps_artifacts, omit_if_empty = True)
@@ -821,6 +829,7 @@ def _run_kt_builder_action(
         execution_requirements = _utils.add_dicts(
             toolchains.kt.execution_requirements,
             {"worker-key-mnemonic": mnemonic},
+            incremental_execution_requirements,
         ),
         arguments = [ctx.actions.args().add_all(toolchains.kt.builder_args), args],
         progress_message = progress_message,
