@@ -117,6 +117,9 @@ message CompilationTaskInfo {
     bool preserve_declaration_order = 16;
     // Remove the copy function when data classes have private constructors from the ABI
     bool remove_data_class_copy_if_constructor_is_private = 17;
+    // Compile incrementally against the worker's state of the previous compilation of the target.
+    // Only honored by the Build Tools API compilation.
+    bool incremental_compilation = 18;
 }
 
 // Nested messages not marked with stable could be refactored.

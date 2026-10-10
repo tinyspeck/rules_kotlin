@@ -89,6 +89,7 @@ class KotlinBuilder(
       INTERNAL_KAPT_CLASSPATH("--internal_kapt_classpath"),
       INTERNAL_JDEPS_GEN_CLASSPATH("--internal_jdeps_gen_classpath"),
       KSP_OPTS("--ksp_opts"),
+      INCREMENTAL_COMPILATION("--incremental_compilation"),
     }
   }
 
@@ -136,7 +137,7 @@ class KotlinBuilder(
     val argMap = ArgMaps.from(lines)
     val info = buildTaskInfo(argMap, ctx.inputDigests).build()
     val context =
-      CompilationTaskContext(info, ctx.asPrintStream())
+      CompilationTaskContext(info, ctx.asPrintStream(), inputDigests = ctx.inputDigests)
     return Pair(argMap, context)
   }
 
@@ -186,6 +187,9 @@ class KotlinBuilder(
         )?.let {
           removeDataClassCopyIfConstructorIsPrivate = it == "true"
         }
+      argMap.optionalSingle(KotlinBuilderFlags.INCREMENTAL_COMPILATION)?.let {
+        incrementalCompilation = it == "true"
+      }
       this
     }
 
