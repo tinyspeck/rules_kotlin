@@ -414,6 +414,7 @@ class BtapiTaskExecutor
         )
       },
       printOnFail = false,
+      printOnSuccess = false,
     )
   }
 
