@@ -55,7 +55,8 @@ class BtapiInvoker(
           .newInstance(btImplClasspath as Any),
       )
 
-    execHandle = compilerInterface.counterpartHandle(checkNotNull(KotlinBtapiCompiler::exec.javaMethod))
+    execHandle =
+      compilerInterface.counterpartHandle(checkNotNull(KotlinBtapiCompiler::exec.javaMethod))
     snapshotHandle =
       compilerInterface.counterpartHandle(
         checkNotNull(KotlinBtapiCompiler::snapshotClasspathEntry.javaMethod),

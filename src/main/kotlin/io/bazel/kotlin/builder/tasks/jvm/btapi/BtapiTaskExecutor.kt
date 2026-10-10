@@ -66,13 +66,13 @@ private val ACTION_DIRECTORY_TOKENS =
  *
  * @param incrementalCompilation keeps the per-target state of tasks that compile incrementally.
  */
-class BtapiTaskExecutor
-  @JvmOverloads
-  constructor(
-    private val btapiClassLoader: ClassLoader,
-    private val incrementalCompilation: IncrementalCompilation =
-      IncrementalCompilation(DEFAULT_INCREMENTAL_COMPILATION_ROOT),
-  ) : JvmTaskExecutor {
+class BtapiTaskExecutor(
+  private val btapiClassLoader: ClassLoader,
+  private val incrementalCompilation: IncrementalCompilation,
+) : JvmTaskExecutor {
+  constructor(btapiClassLoader: ClassLoader) :
+    this(btapiClassLoader, IncrementalCompilation(DEFAULT_INCREMENTAL_COMPILATION_ROOT))
+
   companion object {
     /**
      * Relative to the worker's working directory, the execution root: inside the output tree, so
@@ -316,11 +316,21 @@ class BtapiTaskExecutor
           }
       }
     return when {
-      outputs.jar.isEmpty() -> "the target compiles an ABI jar only"
-      kaptRuns -> "annotation processing with kapt"
-      pluginWithActionOutputs != null ->
+      outputs.jar.isEmpty() -> {
+        "the target compiles an ABI jar only"
+      }
+
+      kaptRuns -> {
+        "annotation processing with kapt"
+      }
+
+      pluginWithActionOutputs != null -> {
         "the compiler plugin ${pluginWithActionOutputs.id} writes to the action's directories"
-      else -> null
+      }
+
+      else -> {
+        null
+      }
     }
   }
 

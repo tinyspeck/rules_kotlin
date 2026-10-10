@@ -169,20 +169,27 @@ class IncrementalCompilation(
     invoke: (Invocation) -> List<String>,
     state: TargetState,
   ): List<String> {
-    val requestRoot = Paths.get(task.directories.temp).toAbsolutePath().normalize().parent
-    val runtimeKey = runtimeKey(runtime, context.inputDigests)
+    val digests = context.inputDigests
+    val requestRoot =
+      Paths
+        .get(task.directories.temp)
+        .toAbsolutePath()
+        .normalize()
+        .parent
+    val runtimeKey = runtimeKey(runtime, digests)
     val pluginSpecs = plugins(state.abiRound.toString())
     val fingerprint =
-      fingerprint(task, runtimeKey, classpath, pluginSpecs, requestRoot, context.inputDigests)
+      fingerprint(task, runtimeKey, classpath, pluginSpecs, requestRoot, digests)
 
-    var previous = if (Files.exists(state.inProgress)) null else readPreviousCompilation(state, task)
+    val interrupted = Files.exists(state.inProgress)
+    var previous = if (interrupted) null else readPreviousCompilation(state, task)
     if (previous?.fingerprint != fingerprint) {
       context.whenTracing {
         printLines(
           "incremental compilation",
           listOf(
             when {
-              Files.exists(state.inProgress) -> "the previous compilation did not complete"
+              interrupted -> "the previous compilation did not complete"
               previous == null -> "no previous compilation state"
               else -> "the compilation configuration changed"
             } + ", compiling from scratch",
@@ -193,10 +200,10 @@ class IncrementalCompilation(
       previous = null
     }
 
-    val sources = stageSources(task, requestRoot, state, context.inputDigests)
+    val sources = stageSources(task, requestRoot, state, digests)
     val modified = sources.filter { (path, digest) -> previous?.sources?.get(path) != digest }.keys
     val removed = previous?.sources?.keys?.filterNot(sources::containsKey) ?: emptyList()
-    val snapshots = classpath.mapNotNull { snapshotOf(it, runtimeKey, compiler, context.inputDigests) }
+    val snapshots = classpath.mapNotNull { snapshotOf(it, runtimeKey, compiler, digests) }
 
     context.whenTracing {
       printLines(
@@ -612,6 +619,7 @@ private fun deleteRecursively(path: Path) {
 
 private fun sha256(text: String): String = sha256(text.toByteArray(StandardCharsets.UTF_8))
 
-private fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).toHex()
+private fun sha256(bytes: ByteArray): String =
+  MessageDigest.getInstance("SHA-256").digest(bytes).toHex()
 
 private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }

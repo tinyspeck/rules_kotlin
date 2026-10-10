@@ -115,8 +115,14 @@ abstract class BaseJdepsGenExtension(
     if (configuration.get(JdepsGenConfigurationKeys.MERGE_EXISTING, false)) {
       readExistingJdeps(jdepsOutput)?.dependencyList?.forEach { dependency ->
         when (dependency.kind) {
-          Deps.Dependency.Kind.EXPLICIT -> explicitJars.add(dependency.path)
-          Deps.Dependency.Kind.IMPLICIT -> implicitJars.add(dependency.path)
+          Deps.Dependency.Kind.EXPLICIT -> {
+            explicitJars.add(dependency.path)
+          }
+
+          Deps.Dependency.Kind.IMPLICIT -> {
+            implicitJars.add(dependency.path)
+          }
+
           else -> {}
         }
       }
@@ -154,7 +160,11 @@ abstract class BaseJdepsGenExtension(
   }
 
   private fun readExistingJdeps(path: String): Deps.Dependencies? =
-    File(path).takeIf { it.isFile }?.inputStream()?.buffered()?.use(Deps.Dependencies::parseFrom)
+    File(path)
+      .takeIf { it.isFile }
+      ?.inputStream()
+      ?.buffered()
+      ?.use(Deps.Dependencies::parseFrom)
 
   private fun doStrictDeps(
     compilerConfiguration: CompilerConfiguration,

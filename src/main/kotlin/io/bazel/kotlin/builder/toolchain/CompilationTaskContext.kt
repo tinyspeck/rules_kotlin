@@ -25,23 +25,27 @@ import java.io.File
 import java.io.PrintStream
 import java.nio.file.FileSystems
 
-class CompilationTaskContext
-  @JvmOverloads
+class CompilationTaskContext(
+  val info: CompilationTaskInfo,
+  private val out: PrintStream,
+  private val executionRoot: String =
+    FileSystems
+      .getDefault()
+      .getPath("")
+      .toAbsolutePath()
+      .toString() + File.separator,
+  /**
+   * The digests Bazel sent with the work request, as hex strings by execroot-relative input path.
+   * Empty outside the persistent worker protocol.
+   */
+  val inputDigests: Map<String, String> = emptyMap(),
+) {
   constructor(
-    val info: CompilationTaskInfo,
-    private val out: PrintStream,
-    private val executionRoot: String =
-      FileSystems
-        .getDefault()
-        .getPath("")
-        .toAbsolutePath()
-        .toString() + File.separator,
-    /**
-     * The digests Bazel sent with the work request, as hex strings by execroot-relative input
-     * path. Empty outside the persistent worker protocol.
-     */
-    val inputDigests: Map<String, String> = emptyMap(),
-  ) {
+    info: CompilationTaskInfo,
+    out: PrintStream,
+    executionRoot: String,
+  ) : this(info, out, executionRoot, emptyMap())
+
   private val start = System.currentTimeMillis()
   private var timings: MutableList<String>?
   private var level = -1
