@@ -61,6 +61,11 @@ kt_rules_test(
 )
 
 kt_rules_test(
+    name = "KotlinBuilderJvmBtaIncrementalTest",
+    srcs = ["jvm/KotlinBuilderJvmBtaIncrementalTest.java"],
+)
+
+kt_rules_test(
     name = "KotlinBuilderJvmBtaTest",
     srcs = ["jvm/KotlinBuilderJvmBtaTest.java"],
     data = [
@@ -207,6 +212,7 @@ test_suite(
         ":KotlinBuilderBuildTest",
         ":KotlinBuilderJvmAbiTest",
         ":KotlinBuilderJvmBasicTest",
+        ":KotlinBuilderJvmBtaIncrementalTest",
         ":KotlinBuilderJvmBtaTest",
         ":KotlinBuilderJvmCoverageTest",
         ":KotlinBuilderJvmJdepsTest",

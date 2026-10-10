@@ -23,15 +23,24 @@ import io.bazel.kotlin.builder.Deps.Dep;
 import io.bazel.kotlin.builder.tasks.jvm.InternalCompilerPlugins;
 import io.bazel.kotlin.builder.tasks.jvm.KotlinJvmTaskExecutor;
 import io.bazel.kotlin.builder.tasks.jvm.btapi.BtapiTaskExecutor;
+import io.bazel.kotlin.builder.tasks.jvm.btapi.IncrementalCompilation;
 import io.bazel.kotlin.builder.toolchain.CompilationTaskContext;
 import io.bazel.kotlin.builder.toolchain.KotlinToolchain;
 import io.bazel.kotlin.model.CompilationTaskInfo;
 import io.bazel.kotlin.model.JvmCompilationTask;
 import io.bazel.kotlin.model.KotlinToolchainInfo;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.HashSet;
+import java.util.List;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -48,6 +57,8 @@ public final class KotlinJvmTestBuilder extends KotlinAbstractTestBuilder<JvmCom
             JVM_ABI_GEN = Dep.fromLabel("//kotlin/compiler:jvm-abi-gen");
 
     private static final JvmCompilationTask.Builder taskBuilder = JvmCompilationTask.newBuilder();
+    private static final Path INCREMENTAL_COMPILATION_ROOT =
+            Paths.get(System.getenv("TEST_TMPDIR"), "kotlin_ic");
     private static final EnumSet<DirectoryType> ALL_DIRECTORY_TYPES =
             EnumSet.of(
                     DirectoryType.SOURCES,
@@ -98,15 +109,8 @@ public final class KotlinJvmTestBuilder extends KotlinAbstractTestBuilder<JvmCom
     public final Dep runCompileTask(Consumer<TaskBuilder>... setup) {
         // Mirror the worker's dispatch: tasks flagged for the Build Tools API run through the
         // typed executor, everything else through the legacy executor.
-        return executeTask(
-                (context, task) -> {
-                    if (task.getInfo().getToolchainInfo().hasBtapi()) {
-                        btapiTaskExecutor().execute(context, task);
-                    } else {
-                        jvmTaskExecutor().execute(context, task);
-                    }
-                },
-                setup);
+        resetForNext();
+        return executeTask(KotlinJvmTestBuilder::dispatch, setup);
     }
 
     private static KotlinJvmTaskExecutor jvmTaskExecutor() {
@@ -124,7 +128,9 @@ public final class KotlinJvmTestBuilder extends KotlinAbstractTestBuilder<JvmCom
 
     private static BtapiTaskExecutor btapiTaskExecutor() {
         if (btapiTaskExecutor == null) {
-            btapiTaskExecutor = new BtapiTaskExecutor(toolchainForTest().getBtapiClassLoader());
+            btapiTaskExecutor = new BtapiTaskExecutor(
+                    toolchainForTest().getBtapiClassLoader(),
+                    new IncrementalCompilation(INCREMENTAL_COMPILATION_ROOT));
         }
         return btapiTaskExecutor;
     }
@@ -172,10 +178,54 @@ public final class KotlinJvmTestBuilder extends KotlinAbstractTestBuilder<JvmCom
         }
     }
 
+    /**
+     * Runs the previous task again, as Bazel runs the action of the same target after its inputs
+     * changed: the per-action directories and the outputs start out empty, while the sources and the
+     * incremental compilation state of the target are kept.
+     *
+     * @param changes the changes to the task, e.g. updated or removed sources.
+     */
+    @SafeVarargs
+    public final Dep rerunCompileTask(Consumer<TaskBuilder>... changes) {
+        EnumSet<DirectoryType> actionDirectories = EnumSet.copyOf(ALL_DIRECTORY_TYPES);
+        actionDirectories.remove(DirectoryType.SOURCES);
+        actionDirectories.forEach(type -> deleteRecursively(directory(type)));
+        DirectoryType.createAll(instanceRoot(), actionDirectories);
+        JvmCompilationTask.Outputs outputs = taskBuilder.getOutputs();
+        Stream.of(outputs.getJar(), outputs.getAbijar(), outputs.getJdeps(), outputs.getSrcjar())
+                .filter(p -> !p.isEmpty())
+                .forEach(p -> deleteRecursively(Paths.get(p)));
+        return executeTask(KotlinJvmTestBuilder::dispatch, changes);
+    }
+
+    private static void dispatch(CompilationTaskContext context, JvmCompilationTask task) {
+        if (task.getInfo().getToolchainInfo().hasBtapi()) {
+            btapiTaskExecutor().execute(context, task);
+        } else {
+            jvmTaskExecutor().execute(context, task);
+        }
+    }
+
+    private static void deleteRecursively(Path path) {
+        if (!Files.exists(path)) {
+            return;
+        }
+        try (Stream<Path> paths = Files.walk(path)) {
+            paths.sorted(Comparator.reverseOrder()).forEach(p -> {
+                try {
+                    Files.delete(p);
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
+            });
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
     private Dep executeTask(
             BiConsumer<CompilationTaskContext, JvmCompilationTask> executor,
             Consumer<TaskBuilder>[] setup) {
-        resetForNext();
         Stream.of(setup).forEach(it -> it.accept(taskBuilderInstance));
         return runCompileTask(
                 (taskContext, task) -> {
@@ -225,6 +275,34 @@ public final class KotlinJvmTestBuilder extends KotlinAbstractTestBuilder<JvmCom
             } else {
                 throw new RuntimeException("unhandled file type: " + pathAsString);
             }
+        }
+
+        /** Replaces the content of a source added before. */
+        public void updateSource(String filename, String... lines) {
+            String path = writeSourceFile(filename, lines).toString();
+            Preconditions.checkState(
+                    taskBuilder.getInputs().getKotlinSourcesList().contains(path)
+                            || taskBuilder.getInputs().getJavaSourcesList().contains(path),
+                    "not a source of the task: %s", path);
+        }
+
+        /** Removes a source added before from the task and deletes it. */
+        public void removeSource(String filename) {
+            String path = directory(DirectoryType.SOURCES).resolve(filename).toAbsolutePath().toString();
+            JvmCompilationTask.Inputs.Builder inputs = taskBuilder.getInputsBuilder();
+            List<String> kotlinSources = new ArrayList<>(inputs.getKotlinSourcesList());
+            List<String> javaSources = new ArrayList<>(inputs.getJavaSourcesList());
+            Preconditions.checkState(
+                    kotlinSources.remove(path) || javaSources.remove(path),
+                    "not a source of the task: %s", path);
+            inputs.clearKotlinSources().addAllKotlinSources(kotlinSources);
+            inputs.clearJavaSources().addAllJavaSources(javaSources);
+            deleteRecursively(Paths.get(path));
+        }
+
+        public TaskBuilder incrementalCompilation() {
+            taskBuilder.getInfoBuilder().setIncrementalCompilation(true);
+            return this;
         }
 
         public TaskBuilder compileJava() {
