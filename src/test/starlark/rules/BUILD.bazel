@@ -6,6 +6,7 @@ load(":btapi_runtime_args_tests.bzl", "btapi_runtime_args_tests")
 load(":btapi_runtime_tests.bzl", "btapi_runtime_tests")
 load(":deps_artifacts_tests.bzl", "deps_artifacts_tests")
 load(":experimental_prune_transitive_deps_tests.bzl", "experimental_prune_transitive_deps_tests")
+load(":incremental_compilation_tests.bzl", "incremental_compilation_tests")
 load(":jdeps_merge_inputs_tests.bzl", "jdeps_merge_inputs_tests")
 load(":mixed_mode_tests.bzl", "mixed_mode_tests")
 load(":plugin_dialect_tests.bzl", "plugin_dialect_tests")
@@ -17,6 +18,10 @@ btapi_runtime_args_tests(
 
 btapi_runtime_tests(
     name = "btapi_runtime_tests",
+)
+
+incremental_compilation_tests(
+    name = "incremental_compilation_tests",
 )
 
 # Only registered through --extra_toolchains by btapi_runtime_args_tests: a runtime built on the
@@ -39,8 +44,9 @@ define_kt_toolchain(
     btapi_runtime = ":override_runtime",
 )
 
-# Only registered through --extra_toolchains by btapi_runtime_args_tests: the same runtime, with
-# the Build Tools API compilation left to the build setting.
+# Only registered through --extra_toolchains by btapi_runtime_args_tests and
+# incremental_compilation_tests: the same runtime, with the Build Tools API compilation left to the
+# build settings.
 define_kt_toolchain(
     name = "setting_controlled_runtime_toolchain",
     btapi_runtime = ":override_runtime",
