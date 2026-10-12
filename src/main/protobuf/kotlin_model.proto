@@ -118,7 +118,7 @@ message CompilationTaskInfo {
     // Remove the copy function when data classes have private constructors from the ABI
     bool remove_data_class_copy_if_constructor_is_private = 17;
     // Compile incrementally against the worker's state of the previous compilation of the target.
-    // Only honored by the Build Tools API compilation.
+    // Set by the worker from its startup flag, for the Build Tools API compilation only.
     bool incremental_compilation = 18;
 }
 

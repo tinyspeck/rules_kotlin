@@ -1,4 +1,3 @@
-load("@bazel_skylib//lib:selects.bzl", "selects")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag", "string_list_flag")
 
 # Copyright 2020 The Bazel Authors. All rights reserved.
@@ -63,31 +62,6 @@ bool_flag(
 config_setting(
     name = "experimental_build_tools_api_enabled",
     flag_values = {":experimental_build_tools_api": "True"},
-    visibility = ["//visibility:public"],
-)
-
-# --@rules_kotlin//kotlin/settings:experimental_incremental_compilation=True
-# Compiles Kotlin incrementally through the Build Tools API, which this setting turns on as well.
-bool_flag(
-    name = "experimental_incremental_compilation",
-    build_setting_default = False,
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "experimental_incremental_compilation_enabled",
-    flag_values = {":experimental_incremental_compilation": "True"},
-    visibility = ["//visibility:public"],
-)
-
-# True when a build setting turns the Build Tools API compilation on, directly or through
-# incremental compilation.
-selects.config_setting_group(
-    name = "build_tools_api_runtime_required",
-    match_any = [
-        ":experimental_build_tools_api_enabled",
-        ":experimental_incremental_compilation_enabled",
-    ],
     visibility = ["//visibility:public"],
 )
 

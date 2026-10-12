@@ -83,12 +83,7 @@ def _kotlin_toolchain_impl(ctx):
         for provider in _stdlib_providers(target, neverlink = False)
     ]
 
-    incremental_compilation = ctx.attr.experimental_incremental_compilation or ctx.attr._experimental_incremental_compilation_setting[BuildSettingInfo].value
-    build_tools_api = (
-        ctx.attr.experimental_build_tools_api or
-        ctx.attr._experimental_build_tools_api_setting[BuildSettingInfo].value or
-        incremental_compilation
-    )
+    build_tools_api = ctx.attr.experimental_build_tools_api or ctx.attr._experimental_build_tools_api_setting[BuildSettingInfo].value
     runtime = ctx.attr.btapi_runtime[BtapiRuntimeInfo] if ctx.attr.btapi_runtime else None
     if build_tools_api and runtime == None:
         fail("%s: the Build Tools API compilation is enabled, but the toolchain has no btapi_runtime" % ctx.label)
@@ -122,7 +117,6 @@ def _kotlin_toolchain_impl(ctx):
         experimental_report_unused_deps = ctx.attr.experimental_report_unused_deps,
         experimental_reduce_classpath_mode = ctx.attr.experimental_reduce_classpath_mode,
         experimental_build_tools_api = build_tools_api,
-        experimental_incremental_compilation = incremental_compilation,
         btapi_runtime = runtime,
         javac_options = ctx.attr.javac_options[JavacOptions] if ctx.attr.javac_options else None,
         kotlinc_options = ctx.attr.kotlinc_options[KotlincOptions] if ctx.attr.kotlinc_options else None,
@@ -181,12 +175,6 @@ _kt_toolchain = rule(
         ),
         "experimental_build_tools_api": attr.bool(
             doc = "Enables experimental support for Build Tools API integration",
-            default = False,
-        ),
-        "experimental_incremental_compilation": attr.bool(
-            doc = """Compiles Kotlin incrementally through the Build Tools API, which it enables as
-            well. The compile actions keep their incremental state under `bazel-out/_kotlin_ic`
-            and are not uploaded to a remote cache.""",
             default = False,
         ),
         "experimental_multiplex_sandboxing": attr.bool(
@@ -373,12 +361,6 @@ _kt_toolchain = rule(
             experimental_build_tools_api attr; both default to False (legacy compilation).""",
             default = Label("//kotlin/settings:experimental_build_tools_api"),
         ),
-        "_experimental_incremental_compilation_setting": attr.label(
-            doc = """Build setting enabling incremental compilation, and with it the Build Tools API
-            compilation, for every toolchain in the build. OR-ed with the per-toolchain
-            experimental_incremental_compilation attr.""",
-            default = Label("//kotlin/settings:experimental_incremental_compilation"),
-        ),
         "_experimental_ksp2_psi_resolution": attr.label(
             doc = """If enabled, KSP2 uses its experimental PSI-based symbol resolution strategy
             (KSPJvmConfig.experimentalPsiResolution) instead of the default Analysis API strategy.""",
@@ -421,7 +403,7 @@ _DEBUG_SELECT = select({
 # Evaluating the labels in the context of bzl file to get its repository
 _EXPERIMENTAL_USE_ABI_JARS = str(Label("//kotlin/internal:experimental_use_abi_jars"))
 _NOEXPERIMENTAL_USE_ABI_JARS = str(Label("//kotlin/internal:noexperimental_use_abi_jars"))
-_BUILD_TOOLS_API_RUNTIME_REQUIRED = str(Label("//kotlin/settings:build_tools_api_runtime_required"))
+_EXPERIMENTAL_BUILD_TOOLS_API_ENABLED = str(Label("//kotlin/settings:experimental_build_tools_api_enabled"))
 
 # The Build Tools API compilation runtime of the configured Kotlin release.
 _KT_DEFAULT_BTAPI_RUNTIME = Label("//kotlin/compiler:btapi_runtime")
@@ -444,7 +426,6 @@ def define_kt_toolchain(
         experimental_multiplex_sandboxing = None,
         supports_path_mapping = None,
         experimental_build_tools_api = None,
-        experimental_incremental_compilation = False,
         btapi_runtime = None,
         javac_options = Label("//kotlin/internal:default_javac_options"),
         kotlinc_options = Label("//kotlin/internal:default_kotlinc_options"),
@@ -474,28 +455,18 @@ def define_kt_toolchain(
             extension tag `btapi_impl_version` declares. A runtime built on either with `base`
             replaces single artifacts. A runtime is an explicit choice of the Build Tools API
             compilation, see `experimental_build_tools_api`.
-        experimental_incremental_compilation: `True` compiles Kotlin incrementally through the
-            Build Tools API and turns the Build Tools API compilation on. The build setting
-            `//kotlin/settings:experimental_incremental_compilation` enables it for every
-            toolchain. Incremental state lives under `bazel-out/_kotlin_ic`, so the compile
-            actions are not uploaded to a remote cache.
         **kwargs: see the attributes of the toolchain rule.
     """
     impl_name = name + "_impl"
-
-    if experimental_incremental_compilation:
-        if experimental_build_tools_api == False:
-            fail("%s: experimental_incremental_compilation requires the Build Tools API compilation" % name)
-        experimental_build_tools_api = True
 
     if btapi_runtime == None:
         btapi_runtime = _KT_DEFAULT_BTAPI_RUNTIME
     elif experimental_build_tools_api == None:
         experimental_build_tools_api = True
     if experimental_build_tools_api != True:
-        # The runtime is fetched only when a build setting turns the Build Tools API on.
+        # The runtime is fetched only when the build setting turns the Build Tools API on.
         btapi_runtime = select({
-            _BUILD_TOOLS_API_RUNTIME_REQUIRED: btapi_runtime,
+            _EXPERIMENTAL_BUILD_TOOLS_API_ENABLED: btapi_runtime,
             "//conditions:default": None,
         })
 
@@ -522,7 +493,6 @@ def define_kt_toolchain(
         experimental_report_unused_deps = experimental_report_unused_deps,
         experimental_reduce_classpath_mode = experimental_reduce_classpath_mode,
         experimental_build_tools_api = experimental_build_tools_api,
-        experimental_incremental_compilation = experimental_incremental_compilation,
         btapi_runtime = btapi_runtime,
         javac_options = javac_options,
         kotlinc_options = kotlinc_options,

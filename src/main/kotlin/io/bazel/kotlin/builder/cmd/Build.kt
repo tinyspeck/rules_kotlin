@@ -29,6 +29,14 @@ import io.bazel.kotlin.model.JvmCompilationTask
 import io.bazel.worker.Worker
 import kotlin.system.exitProcess
 
+/**
+ * The worker startup flag that turns on incremental compilation, set with
+ * `--worker_extra_flag=KotlinCompile=--experimental_incremental_compilation`. Startup flags are
+ * not part of the actions' cache keys, so incremental and non-incremental builds share cache
+ * entries.
+ */
+private const val INCREMENTAL_COMPILATION_FLAG = "--experimental_incremental_compilation"
+
 private class DispatchingTaskExecutor(
   private val legacyExecutor: KotlinJvmTaskExecutor,
   btapiFactory: () -> BtapiTaskExecutor,
@@ -51,7 +59,7 @@ object Build {
   @JvmStatic
   fun main(args: Array<String>) {
     Worker
-      .from(args.toList()) {
+      .from(args.toList()) { startupArgs ->
         val toolchain = KotlinToolchain.createToolchain()
         val plugins =
           InternalCompilerPlugins(
@@ -66,7 +74,11 @@ object Build {
               BtapiTaskExecutor(toolchain.btapiClassLoader)
             },
           )
-        val builder = KotlinBuilder(jvmTaskExecutor)
+        val builder =
+          KotlinBuilder(
+            jvmTaskExecutor,
+            incrementalCompilation = INCREMENTAL_COMPILATION_FLAG in startupArgs,
+          )
         start(CompileKotlin(builder))
       }.run(::exitProcess)
   }
