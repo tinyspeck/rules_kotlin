@@ -55,7 +55,7 @@ import java.util.concurrent.ConcurrentHashMap
 // Build Tools API runtime (BtapiRuntime).
 private const val JVM_ABI_GEN_PLUGIN_ID = "org.jetbrains.kotlin.jvm.abi"
 private const val KAPT_PLUGIN_ID = "org.jetbrains.kotlin.kapt3"
-private const val JDEPS_GEN_PLUGIN_ID = "io.bazel.kotlin.plugin.jdeps.JDepsGen"
+internal const val JDEPS_GEN_PLUGIN_ID = "io.bazel.kotlin.plugin.jdeps.JDepsGen"
 
 // The placeholders of user plugin options that expand to directories of the action.
 private val ACTION_DIRECTORY_TOKENS =

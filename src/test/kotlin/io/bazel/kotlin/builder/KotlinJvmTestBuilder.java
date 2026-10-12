@@ -31,16 +31,25 @@ import io.bazel.kotlin.model.JvmCompilationTask;
 import io.bazel.kotlin.model.KotlinToolchainInfo;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -57,8 +66,8 @@ public final class KotlinJvmTestBuilder extends KotlinAbstractTestBuilder<JvmCom
             JVM_ABI_GEN = Dep.fromLabel("//kotlin/compiler:jvm-abi-gen");
 
     private static final JvmCompilationTask.Builder taskBuilder = JvmCompilationTask.newBuilder();
-    private static final Path INCREMENTAL_COMPILATION_ROOT =
-            Paths.get(System.getenv("TEST_TMPDIR"), "kotlin_ic");
+    /** Digests of the jars, which the tests do not rewrite in place, by path, size and mtime. */
+    private static final Map<String, String> JAR_DIGESTS = new ConcurrentHashMap<>();
     private static final EnumSet<DirectoryType> ALL_DIRECTORY_TYPES =
             EnumSet.of(
                     DirectoryType.SOURCES,
@@ -74,6 +83,8 @@ public final class KotlinJvmTestBuilder extends KotlinAbstractTestBuilder<JvmCom
     private final TaskBuilder taskBuilderInstance = new TaskBuilder();
     private static KotlinJvmTaskExecutor jvmTaskExecutor;
     private static BtapiTaskExecutor btapiTaskExecutor;
+    private static Path incrementalCompilationRoot;
+    private boolean sendInputDigests = true;
     private static KotlinToolchainInfo.BtapiRuntime btapiRuntime;
 
     @Override
@@ -110,7 +121,82 @@ public final class KotlinJvmTestBuilder extends KotlinAbstractTestBuilder<JvmCom
         // Mirror the worker's dispatch: tasks flagged for the Build Tools API run through the
         // typed executor, everything else through the legacy executor.
         resetForNext();
+        sendInputDigests = true;
         return executeTask(KotlinJvmTestBuilder::dispatch, setup);
+    }
+
+    /**
+     * Mirrors the worker protocol: Bazel sends a digest of every input, computed with its
+     * --digest_function. Only incremental compilations use them; the others skip the hashing.
+     */
+    @Override
+    Map<String, String> inputDigests(JvmCompilationTask task) {
+        if (!sendInputDigests || !task.getInfo().getIncrementalCompilation()) {
+            return Collections.emptyMap();
+        }
+        JvmCompilationTask.Inputs inputs = task.getInputs();
+        KotlinToolchainInfo.BtapiRuntime btapi = task.getInfo().getToolchainInfo().getBtapi();
+        Map<String, String> digests = new HashMap<>();
+        Stream.of(inputs.getKotlinSourcesList(), inputs.getJavaSourcesList())
+                .flatMap(List::stream)
+                .forEach(source -> digests.put(source, sha256(Paths.get(source))));
+        Stream.of(
+                        inputs.getClasspathList(),
+                        inputs.getCompilerPluginClasspathList(),
+                        btapi.getApiImplClasspathList(),
+                        btapi.getJvmAbiGenClasspathList(),
+                        btapi.getKaptClasspathList(),
+                        btapi.getJdepsGenClasspathList(),
+                        inputs.getPluginsList().stream()
+                                .flatMap(plugin -> plugin.getClasspathList().stream())
+                                .collect(Collectors.toList()))
+                .flatMap(List::stream)
+                .filter(jar -> Files.isRegularFile(Paths.get(jar)))
+                .forEach(jar -> digests.put(jar, jarDigest(Paths.get(jar))));
+        return digests;
+    }
+
+    private static String jarDigest(Path jar) {
+        try {
+            BasicFileAttributes attributes = Files.readAttributes(jar, BasicFileAttributes.class);
+            String key = jar + " " + attributes.size() + " " + attributes.lastModifiedTime();
+            return JAR_DIGESTS.computeIfAbsent(key, k -> sha256(jar));
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    private static String sha256(Path file) {
+        try (InputStream in = Files.newInputStream(file)) {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] buffer = new byte[64 * 1024];
+            for (int read; (read = in.read(buffer)) >= 0; ) {
+                digest.update(buffer, 0, read);
+            }
+            StringBuilder hex = new StringBuilder();
+            for (byte b : digest.digest()) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.toString();
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /**
+     * Starts over with a new worker and an empty incremental compilation root, as a restarted
+     * worker in a new output base.
+     */
+    public static void restartWorker() {
+        btapiTaskExecutor = null;
+    }
+
+    /** The incremental compilation root of the current worker. */
+    public static Path incrementalCompilationRoot() {
+        btapiTaskExecutor();
+        return incrementalCompilationRoot;
     }
 
     private static KotlinJvmTaskExecutor jvmTaskExecutor() {
@@ -128,9 +214,11 @@ public final class KotlinJvmTestBuilder extends KotlinAbstractTestBuilder<JvmCom
 
     private static BtapiTaskExecutor btapiTaskExecutor() {
         if (btapiTaskExecutor == null) {
+            incrementalCompilationRoot =
+                    Paths.get(System.getenv("TEST_TMPDIR"), "kotlin_ic", UUID.randomUUID().toString());
             btapiTaskExecutor = new BtapiTaskExecutor(
                     toolchainForTest().getBtapiClassLoader(),
-                    new IncrementalCompilation(INCREMENTAL_COMPILATION_ROOT));
+                    new IncrementalCompilation(incrementalCompilationRoot));
         }
         return btapiTaskExecutor;
     }
@@ -305,6 +393,12 @@ public final class KotlinJvmTestBuilder extends KotlinAbstractTestBuilder<JvmCom
             return this;
         }
 
+        /** Runs the task without input digests, as Bazel runs it outside a persistent worker. */
+        public TaskBuilder withoutInputDigests() {
+            sendInputDigests = false;
+            return this;
+        }
+
         public TaskBuilder compileJava() {
             return this;
         }
@@ -340,6 +434,27 @@ public final class KotlinJvmTestBuilder extends KotlinAbstractTestBuilder<JvmCom
                 taskBuilder.getInputsBuilder().addClasspath(dependency);
                 taskBuilder.getInputsBuilder().addDirectDependencies(dependency);
             });
+        }
+
+        /** Keeps direct dependencies added before on the classpath as transitive dependencies. */
+        public void makeTransitive(Dep... dependencies) {
+            List<String> jars = Dep.classpathOf(dependencies).collect(Collectors.toList());
+            JvmCompilationTask.Inputs.Builder inputs = taskBuilder.getInputsBuilder();
+            List<String> direct = new ArrayList<>(inputs.getDirectDependenciesList());
+            Preconditions.checkState(direct.removeAll(jars), "not direct dependencies: %s", jars);
+            inputs.clearDirectDependencies().addAllDirectDependencies(direct);
+        }
+
+        /** Removes dependencies added before from the classpath. */
+        public void removeDependencies(Dep... dependencies) {
+            List<String> jars = Dep.classpathOf(dependencies).collect(Collectors.toList());
+            JvmCompilationTask.Inputs.Builder inputs = taskBuilder.getInputsBuilder();
+            List<String> direct = new ArrayList<>(inputs.getDirectDependenciesList());
+            List<String> classpath = new ArrayList<>(inputs.getClasspathList());
+            Preconditions.checkState(classpath.removeAll(jars), "not dependencies: %s", jars);
+            direct.removeAll(jars);
+            inputs.clearDirectDependencies().addAllDirectDependencies(direct);
+            inputs.clearClasspath().addAllClasspath(classpath);
         }
 
         public void addTransitiveDependencies(Dep... dependencies) {

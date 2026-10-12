@@ -16,9 +16,11 @@
  */
 package io.bazel.kotlin.builder.tasks.jvm.btapi
 
+import com.google.devtools.build.lib.view.proto.Deps
 import io.bazel.kotlin.builder.tasks.BtapiRuntime
 import io.bazel.kotlin.builder.toolchain.CompilationStatusException
 import io.bazel.kotlin.builder.toolchain.CompilationTaskContext
+import io.bazel.kotlin.builder.utils.fingerprintOf
 import io.bazel.kotlin.compiler.CompilerPluginSpec
 import io.bazel.kotlin.compiler.IncrementalCompilationSpec
 import io.bazel.kotlin.compiler.KotlinBtapiCompiler
@@ -37,9 +39,11 @@ import java.nio.file.attribute.FileTime
 import java.security.MessageDigest
 import java.time.Duration
 import java.time.Instant
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.ReentrantLock
+import java.util.stream.Collectors
 import kotlin.concurrent.withLock
 
 /** Bumped whenever the layout or the meaning of the persisted state changes. */
@@ -52,34 +56,55 @@ private const val COMPILATION_ERROR = 1
 private val SNAPSHOT_RETENTION: Duration = Duration.ofDays(3)
 
 /**
+ * The jdeps plugin options that list the classpath. The state survives their changes: the
+ * compiler detects classpath changes from the snapshots, and [IncrementalCompilation] fixes up the
+ * jdeps.
+ */
+private val JDEPS_CLASSPATH_OPTIONS = setOf("direct_dependencies", "full_classpath")
+
+/** The strict deps levels that check the dependencies of the sources. */
+private val STRICT_DEPS_CHECKED = setOf("warn", "error")
+
+/**
  * Snapshot-based incremental compilation for the Build Tools API path.
  *
  * Bazel runs every compile action against empty output directories, while the Kotlin incremental
  * compiler compiles against the outputs and caches of the previous compilation. The worker keeps
  * that state per target under [root], outside of the action's directories, compiles into it, and
  * copies the results into the action's outputs. The state of a target is only reused while the
- * compilation's configuration (compiler flags and plugins, the classpath entries, the direct
- * dependencies, the requested outputs) is unchanged; any change, an interrupted compilation, or a
- * failure the incremental compiler could not roll back starts over with a full compilation.
+ * compilation's configuration (compiler flags and plugins, the friend paths, the requested
+ * outputs) is unchanged and, under strict deps, no direct dependency was removed; any such change,
+ * an interrupted compilation, or a failure the incremental compiler could not roll back starts
+ * over with a full compilation.
  *
- * Source changes are computed from content digests against the sources of the last successful
- * compilation; classpath changes are detected by the compiler from per-entry snapshots, which are
- * shared across targets and keyed by the entry's content.
+ * File contents are identified by the digests Bazel sends with each work request, computed with
+ * the build's `--digest_function`, so incremental compilation needs the persistent worker
+ * protocol. Source changes are computed from those digests against the sources of the last
+ * successful compilation; classpath changes, including added and removed entries, are detected by
+ * the compiler from per-entry snapshots, which are shared across targets and keyed by the entry's
+ * digest.
  */
 class IncrementalCompilation(
   private val root: Path,
 ) {
-  private val targetLocks = ConcurrentHashMap<Path, ReentrantLock>()
-  private val computedDigests = ConcurrentHashMap<Path, ComputedDigest>()
+  private val targetLocks = ConcurrentHashMap<Path, TargetLock>()
   private val snapshotsPruned = AtomicBoolean(false)
+
+  /** Marks [root] as used by this worker; its disappearance means the root does not persist. */
+  private val instanceMarker: Path =
+    root.resolve(INSTANCES_DIR).resolve(UUID.randomUUID().toString())
+  private var instanceMarked = false
+  private var rootResets = false
 
   private val snapshotsDir: Path get() = root.resolve("classpath-snapshots")
 
-  private data class ComputedDigest(
-    val size: Long,
-    val modified: FileTime,
-    val digest: String,
-  )
+  /** A target's in-process lock, removed once no compilation holds or awaits it. */
+  private class TargetLock {
+    val lock = ReentrantLock()
+
+    /** The compilations holding or awaiting [lock]; changed only within [targetLocks]' compute. */
+    var users = 0
+  }
 
   /** What [compile] hands to the compiler invocation. */
   class Invocation(
@@ -103,6 +128,7 @@ class IncrementalCompilation(
     val fingerprint: String,
     /** stable source path -> content digest */
     val sources: Map<String, String>,
+    val directDependencies: Set<String>,
   )
 
   /** The state directory of one target. */
@@ -118,6 +144,9 @@ class IncrementalCompilation(
     val jdeps: Path = dir.resolve("jdeps")
     val stagedSources: Path = dir.resolve("srcs")
 
+    /** Snapshots of the classpath entries the request has no digest for, recomputed each time. */
+    val classpathSnapshots: Path = dir.resolve("classpath-snapshots")
+
     /** Discards everything but the lock file. */
     fun reset() {
       Files.list(dir).use { entries ->
@@ -131,8 +160,8 @@ class IncrementalCompilation(
   }
 
   /**
-   * Compiles the task incrementally, or returns null when the state directory of the target cannot
-   * be created (e.g. the worker runs inside a sandbox) and the caller should compile as usual.
+   * Compiles the task incrementally, or returns null when the worker cannot keep incremental state
+   * (see [unavailability]) and the caller should compile as usual.
    *
    * @param classpath the compile classpath.
    * @param plugins the compiler plugins, given the directory the ABI plugin writes to.
@@ -150,6 +179,10 @@ class IncrementalCompilation(
   ): List<String>? {
     val state =
       try {
+        unavailability(context)?.let { reason ->
+          context.whenTracing { printLines("incremental compilation unavailable", listOf(reason)) }
+          return null
+        }
         TargetState(Files.createDirectories(root.resolve(targetKey(task))))
       } catch (e: IOException) {
         context.whenTracing {
@@ -160,6 +193,47 @@ class IncrementalCompilation(
     return withTargetLock(state) {
       compileWithState(context, task, runtime, compiler, classpath, plugins, invoke, state)
     }
+  }
+
+  /** Why the worker cannot compile incrementally, or null if it can. */
+  private fun unavailability(context: CompilationTaskContext): String? =
+    when {
+      context.inputDigests.isEmpty() -> {
+        "the request has no input digests: the action does not run in a persistent worker"
+      }
+
+      !rootPersists(context) -> {
+        "$root is reset between requests, e.g. by a sandboxed worker"
+      }
+
+      else -> {
+        null
+      }
+    }
+
+  /**
+   * Whether [root] keeps its contents between requests. Bazel resets the directory a sandboxed
+   * worker runs in before each request, which discards the state: the first compilation marks the
+   * root for this worker, and once the marker disappears, the worker compiles non-incrementally.
+   */
+  @Synchronized
+  private fun rootPersists(context: CompilationTaskContext): Boolean {
+    if (rootResets) {
+      return false
+    }
+    if (!instanceMarked) {
+      Files.createDirectories(instanceMarker.parent)
+      Files.write(instanceMarker, ByteArray(0))
+      instanceMarker.toFile().deleteOnExit()
+      instanceMarked = true
+    } else if (!Files.exists(instanceMarker)) {
+      rootResets = true
+      context.printLines(
+        "warning: incremental compilation disabled",
+        listOf("$root is reset between requests, e.g. by a sandboxed worker"),
+      )
+    }
+    return !rootResets
   }
 
   private fun compileWithState(
@@ -179,14 +253,20 @@ class IncrementalCompilation(
         .toAbsolutePath()
         .normalize()
         .parent
-    val runtimeKey = runtimeKey(runtime, digests)
+    val runtimeKey =
+      runtime.classpathFingerprint.ifEmpty { fingerprintOf(runtime.apiImplClasspath, digests) }
     val pluginSpecs = plugins(state.abiRound.toString())
-    val fingerprint =
-      fingerprint(task, runtimeKey, classpath, pluginSpecs, requestRoot, digests)
+    val fingerprint = fingerprint(task, runtimeKey, pluginSpecs, requestRoot, digests)
+    val directDependencies = task.inputs.directDependenciesList.toSet()
 
     val interrupted = Files.exists(state.inProgress)
     var previous = if (interrupted) null else readPreviousCompilation(state, task)
-    if (previous?.fingerprint != fingerprint) {
+    // Strict deps are checked on the recompiled sources only, so a dependency that is no longer
+    // direct must be checked against every source.
+    val removedDirectDependency =
+      task.info.strictKotlinDeps in STRICT_DEPS_CHECKED &&
+        previous?.directDependencies?.all(directDependencies::contains) == false
+    if (previous?.fingerprint != fingerprint || removedDirectDependency) {
       context.whenTracing {
         printLines(
           "incremental compilation",
@@ -194,6 +274,7 @@ class IncrementalCompilation(
             when {
               interrupted -> "the previous compilation did not complete"
               previous == null -> "no previous compilation state"
+              removedDirectDependency -> "a direct dependency was removed"
               else -> "the compilation configuration changed"
             } + ", compiling from scratch",
           ),
@@ -206,16 +287,21 @@ class IncrementalCompilation(
     val sources = stageSources(task, requestRoot, state, digests)
     val modified = sources.filter { (path, digest) -> previous?.sources?.get(path) != digest }.keys
     val removed = previous?.sources?.keys?.filterNot(sources::containsKey) ?: emptyList()
-    val snapshots = classpath.mapNotNull { snapshotOf(it, runtimeKey, compiler, digests) }
+    deleteRecursively(state.classpathSnapshots)
+    val snapshots =
+      classpath.withIndex().mapNotNull { (index, entry) ->
+        snapshotOf(entry, index, state, runtimeKey, compiler, digests)
+      }
 
     context.whenTracing {
       printLines(
         "incremental compilation",
-        if (previous == null) {
-          listOf("source changes unknown")
-        } else {
-          modified.map { "modified: $it" } + removed.map { "removed: $it" }
-        },
+        listOf("state: ${state.dir}") +
+          if (previous == null) {
+            listOf("source changes unknown")
+          } else {
+            modified.map { "modified: $it" } + removed.map { "removed: $it" }
+          },
       )
     }
 
@@ -267,13 +353,17 @@ class IncrementalCompilation(
       copyTree(state.abiClasses, Paths.get(task.directories.abiClasses))
     }
     if (task.outputs.jdeps.isNotEmpty()) {
+      reconcileJdeps(Paths.get(task.outputs.jdeps), task, classpath)
       Files.copy(
         Paths.get(task.outputs.jdeps),
         state.jdeps,
         StandardCopyOption.REPLACE_EXISTING,
       )
     }
-    writePreviousCompilation(state, PreviousCompilation(fingerprint, sources))
+    writePreviousCompilation(
+      state,
+      PreviousCompilation(fingerprint, sources, directDependencies),
+    )
     Files.delete(state.inProgress)
     return output
   }
@@ -281,17 +371,28 @@ class IncrementalCompilation(
   private fun <T> withTargetLock(
     state: TargetState,
     block: () -> T,
-  ): T =
-    targetLocks.computeIfAbsent(state.dir) { ReentrantLock() }.withLock {
-      // The file lock serializes worker processes sharing the state root, e.g. the singleplex
-      // worker instances of one Bazel server.
-      FileChannel
-        .open(
-          state.dir.resolve(TargetState.LOCK_FILE),
-          StandardOpenOption.CREATE,
-          StandardOpenOption.WRITE,
-        ).use { channel -> channel.lock().use { block() } }
+  ): T {
+    val targetLock =
+      targetLocks.compute(state.dir) { _, existing ->
+        (existing ?: TargetLock()).apply { users++ }
+      }!!
+    try {
+      return targetLock.lock.withLock {
+        // The file lock serializes worker processes sharing the state root, e.g. the singleplex
+        // worker instances of one Bazel server.
+        FileChannel
+          .open(
+            state.dir.resolve(TargetState.LOCK_FILE),
+            StandardOpenOption.CREATE,
+            StandardOpenOption.WRITE,
+          ).use { channel -> channel.lock().use { block() } }
+      }
+    } finally {
+      targetLocks.compute(state.dir) { _, existing ->
+        existing?.takeIf { --it.users > 0 }
+      }
     }
+  }
 
   /**
    * The state directory name of the task's target. The label alone is ambiguous: a target can be
@@ -311,7 +412,8 @@ class IncrementalCompilation(
    * the action's own directories (source jar contents, generated sources) live under a different
    * directory in every action, so they are staged under the target's state directory: the
    * incremental compiler tracks sources by path. Returns the content digest of each source by its
-   * compiled path, in compilation order.
+   * compiled path, in compilation order: Bazel's digest of an input, or, for the files Bazel never
+   * saw, a SHA-256 of the content.
    */
   private fun stageSources(
     task: JvmCompilationTask,
@@ -334,12 +436,15 @@ class IncrementalCompilation(
         sources[target.toString()] = sha256(content)
       } else {
         sources[path.toString()] =
-          inputDigests[source]?.takeIf { it.isNotEmpty() } ?: sha256(Files.readAllBytes(path))
+          inputDigests.digestOf(source) ?: sha256(Files.readAllBytes(path))
       }
     }
     if (Files.isDirectory(state.stagedSources)) {
       Files.walk(state.stagedSources).use { paths ->
-        paths.filter { Files.isRegularFile(it) && it !in staged }.toList().forEach(Files::delete)
+        paths
+          .filter { Files.isRegularFile(it) && it !in staged }
+          .collect(Collectors.toList())
+          .forEach(Files::delete)
       }
     }
     return sources
@@ -366,6 +471,41 @@ class IncrementalCompilation(
   }
 
   /**
+   * The seeded jdeps can list dependencies that are no longer on the classpath and unused
+   * dependencies that are no longer direct, and the plugin does not run when the compiler
+   * recompiles nothing. Drops the dependencies that left the classpath and recomputes the unused
+   * direct dependencies.
+   */
+  private fun reconcileJdeps(
+    output: Path,
+    task: JvmCompilationTask,
+    classpath: List<String>,
+  ) {
+    val jdeps = Files.newInputStream(output).use(Deps.Dependencies::parseFrom)
+    val onClasspath = (task.inputs.classpathList + classpath).toSet()
+    val used =
+      jdeps.dependencyList.filter {
+        it.kind != Deps.Dependency.Kind.UNUSED && it.path in onClasspath
+      }
+    val explicit = used.filter { it.kind == Deps.Dependency.Kind.EXPLICIT }.map { it.path }.toSet()
+    val unused =
+      task.inputs.directDependenciesList.distinct().filterNot(explicit::contains).map {
+        Deps.Dependency
+          .newBuilder()
+          .setKind(Deps.Dependency.Kind.UNUSED)
+          .setPath(it)
+          .build()
+      }
+    val reconciled =
+      jdeps
+        .toBuilder()
+        .clearDependency()
+        .addAllDependency((used + unused).sortedBy { it.path })
+        .build()
+    Files.newOutputStream(output).use(reconciled::writeTo)
+  }
+
+  /**
    * The ABI plugin writes the ABI of the classes compiled in this round only. Replaces the ABI of
    * every class the compilation wrote or deleted with this round's output: a class the plugin did
    * not emit again was removed from the ABI (or from the sources).
@@ -382,11 +522,14 @@ class IncrementalCompilation(
   }
 
   /**
-   * The snapshot of one classpath entry, computed once per entry content. Returns null for entries
-   * that do not exist, which the compiler ignores as well.
+   * The snapshot of one classpath entry, computed once per entry digest and shared across targets.
+   * An entry the request has no digest for, e.g. a directory, is snapshotted for this compilation
+   * only. Returns null for entries that do not exist, which the compiler ignores as well.
    */
   private fun snapshotOf(
     entry: String,
+    index: Int,
+    state: TargetState,
     runtimeKey: String,
     compiler: KotlinBtapiCompiler,
     inputDigests: Map<String, String>,
@@ -397,7 +540,18 @@ class IncrementalCompilation(
     }
     // External repositories rarely change; the class-level granularity keeps their snapshots small.
     val classLevel = entry.startsWith("external/") || "/external/" in entry
-    val name = sha256("$STATE_FORMAT\n$runtimeKey\n${digestOf(entry, inputDigests)}\n$classLevel")
+    val digest = inputDigests.digestOf(entry)
+    if (digest == null) {
+      Files.createDirectories(state.classpathSnapshots)
+      val snapshot = state.classpathSnapshots.resolve("$index.bin")
+      compiler.snapshotClasspathEntry(
+        path.toAbsolutePath().toString(),
+        snapshot.toString(),
+        classLevel,
+      )
+      return snapshot.toString()
+    }
+    val name = sha256("$STATE_FORMAT\n$runtimeKey\n$digest\n$classLevel")
     val snapshot = snapshotsDir.resolve("$name.bin")
     if (Files.exists(snapshot)) {
       Files.setLastModifiedTime(snapshot, FileTime.from(Instant.now()))
@@ -429,28 +583,18 @@ class IncrementalCompilation(
     Files.list(snapshotsDir).use { snapshots ->
       snapshots
         .filter { Files.getLastModifiedTime(it).toInstant().isBefore(cutoff) }
-        .toList()
+        .collect(Collectors.toList())
         .forEach { runCatching { Files.deleteIfExists(it) } }
     }
   }
 
-  /** Identifies the compiler runtime, whose snapshot and cache formats the state depends on. */
-  private fun runtimeKey(
-    runtime: BtapiRuntime,
-    inputDigests: Map<String, String>,
-  ): String =
-    runtime.classpathFingerprint.ifEmpty {
-      sha256(runtime.apiImplClasspath.joinToString("\n") { "$it ${digestOf(it, inputDigests)}" })
-    }
-
   /**
-   * Everything a compilation's outputs depend on besides the sources and the classpath contents,
-   * with the action-specific directory replaced by a placeholder.
+   * Everything a compilation's outputs depend on besides the sources and the classpath, with the
+   * action-specific directory replaced by a placeholder.
    */
   private fun fingerprint(
     task: JvmCompilationTask,
     runtimeKey: String,
-    classpath: List<String>,
     plugins: List<CompilerPluginSpec>,
     requestRoot: Path,
     inputDigests: Map<String, String>,
@@ -480,11 +624,15 @@ class IncrementalCompilation(
     }
     plugins.forEach { plugin ->
       add("plugin", plugin.id)
-      plugin.classpath.forEach { add("plugin_classpath", "$it ${digestOf(it, inputDigests)}") }
-      plugin.options.forEach { add("plugin_option", it) }
+      plugin.classpath.forEach {
+        // A plugin jar the request has no digest for cannot be tracked: never reuse the state.
+        add("plugin_classpath", "$it ${inputDigests.digestOf(it) ?: UUID.randomUUID()}")
+      }
+      plugin.options
+        .filterNot {
+          plugin.id == JDEPS_GEN_PLUGIN_ID && it.substringBefore('=') in JDEPS_CLASSPATH_OPTIONS
+        }.forEach { add("plugin_option", it) }
     }
-    classpath.forEach { add("classpath", it) }
-    task.inputs.directDependenciesList.forEach { add("direct_dependency", it) }
     add("jdeps", task.outputs.jdeps.isNotEmpty())
     add("abi", task.outputs.abijar.isNotEmpty())
     return sha256(lines.joinToString("\n"))
@@ -509,15 +657,17 @@ class IncrementalCompilation(
     }
     var fingerprint: String? = null
     val sources = LinkedHashMap<String, String>()
+    val directDependencies = mutableSetOf<String>()
     for (line in lines.drop(1)) {
       val fields = line.split(" ", limit = 3)
       when (fields[0]) {
         "fingerprint" -> fingerprint = fields[1]
         "source" -> sources[fields[2]] = fields[1]
+        "direct_dependency" -> directDependencies.add(line.substringAfter(' '))
         else -> return null
       }
     }
-    return fingerprint?.let { PreviousCompilation(it, sources) }
+    return fingerprint?.let { PreviousCompilation(it, sources, directDependencies) }
   }
 
   private fun writePreviousCompilation(
@@ -526,7 +676,8 @@ class IncrementalCompilation(
   ) {
     val lines =
       listOf("format $STATE_FORMAT", "fingerprint ${compilation.fingerprint}") +
-        compilation.sources.map { (path, digest) -> "source $digest $path" }
+        compilation.sources.map { (path, digest) -> "source $digest $path" } +
+        compilation.directDependencies.map { "direct_dependency $it" }
     val temporary = Files.createTempFile(state.dir, "state", ".tmp")
     Files.write(temporary, lines, StandardCharsets.UTF_8)
     Files.move(
@@ -537,43 +688,18 @@ class IncrementalCompilation(
     )
   }
 
-  /**
-   * The content digest of a file: the digest Bazel sent with the request, or one computed from the
-   * file and reused while the file's size and modification time are unchanged.
-   */
-  private fun digestOf(
-    file: String,
-    inputDigests: Map<String, String>,
-  ): String {
-    inputDigests[file]?.takeIf { it.isNotEmpty() }?.let { return it }
-    val path = Paths.get(file).toAbsolutePath()
-    val attributes = Files.readAttributes(path, BasicFileAttributes::class.java)
-    if (attributes.isDirectory) {
-      return sha256(
-        stamps(path).toSortedMap().entries.joinToString("\n") { (relative, _) ->
-          "$relative ${digestOf(path.resolve(relative).toString(), emptyMap())}"
-        },
-      )
-    }
-    computedDigests[path]?.let {
-      if (it.size == attributes.size() && it.modified == attributes.lastModifiedTime()) {
-        return it.digest
-      }
-    }
-    val digest = MessageDigest.getInstance("SHA-256")
-    Files.newInputStream(path).use { input ->
-      val buffer = ByteArray(64 * 1024)
-      while (true) {
-        val read = input.read(buffer)
-        if (read < 0) break
-        digest.update(buffer, 0, read)
-      }
-    }
-    return digest.digest().toHex().also {
-      computedDigests[path] = ComputedDigest(attributes.size(), attributes.lastModifiedTime(), it)
-    }
+  private companion object {
+    /** Holds the markers of the workers using the root, see [rootPersists]. */
+    const val INSTANCES_DIR = "workers"
   }
 }
+
+/**
+ * Bazel's digest of an input, as the request carries it: computed with the build's
+ * `--digest_function`. Null when the request has none for the path.
+ */
+private fun Map<String, String>.digestOf(path: String): String? =
+  get(path)?.takeIf { it.isNotEmpty() }
 
 /** The size and modification time of every file under [dir], by relative path. */
 private fun stamps(dir: Path): Map<String, FileStamp> {
@@ -583,7 +709,7 @@ private fun stamps(dir: Path): Map<String, FileStamp> {
   return Files.walk(dir).use { paths ->
     paths
       .filter { Files.isRegularFile(it) }
-      .toList()
+      .collect(Collectors.toList())
       .associate { file ->
         val attributes = Files.readAttributes(file, BasicFileAttributes::class.java)
         dir.relativize(file).toString() to

@@ -25,15 +25,19 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.jar.JarFile;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static com.google.common.truth.Truth.assertThat;
 import static org.junit.Assert.assertThrows;
@@ -79,6 +83,20 @@ public class KotlinBuilderJvmBtaIncrementalTest {
             }
         }
         return compiled;
+    }
+
+    private static boolean compiledFromScratch() {
+        return ctx.outLines().stream().anyMatch(line -> line.endsWith("compiling from scratch"));
+    }
+
+    private static Dep compileDependency() {
+        return ctx.runCompileTask(
+                c -> {
+                    c.useBuildToolsApi();
+                    c.compileKotlin();
+                    c.addSource("Dependency.kt", "package dep", "class Dependency");
+                    c.outputJar();
+                });
     }
 
     private static List<String> jarEntries(String jar) {
@@ -202,10 +220,124 @@ public class KotlinBuilderJvmBtaIncrementalTest {
     }
 
     private static List<String> explicitDependencies(Dep dep) {
+        return dependencies(dep, Dependency.Kind.EXPLICIT);
+    }
+
+    private static List<String> dependencies(Dep dep, Dependency.Kind kind) {
         return jdeps(dep).getDependencyList().stream()
-                .filter(d -> d.getKind() == Dependency.Kind.EXPLICIT)
+                .filter(d -> d.getKind() == kind)
                 .map(Dependency::getPath)
                 .collect(Collectors.toList());
+    }
+
+    @Test
+    public void testAddedDependencyKeepsTheState() {
+        Dep dependency = compileDependency();
+        compileABC(false);
+
+        Dep dep = ctx.rerunCompileTask(c -> {
+            c.addDirectDependencies(dependency);
+            c.updateSource("A.kt", "package ic", "fun a(): Int = dep.Dependency().hashCode()");
+        });
+
+        assertThat(compiledFromScratch()).isFalse();
+        assertThat(compiledSources()).containsExactly("A.kt");
+        assertThat(explicitDependencies(dep)).contains(dependency.singleCompileJar());
+    }
+
+    @Test
+    public void testDependencyChangesUpdateTheJdeps() {
+        Dep used = compileDependency();
+        Dep unused = compileDependency();
+        ctx.runCompileTask(
+                c -> {
+                    c.useBuildToolsApi();
+                    c.incrementalCompilation();
+                    c.compileKotlin();
+                    c.addDirectDependencies(used, unused);
+                    c.addSource("A.kt", A);
+                    c.addSource("UsesDependency.kt", "package ic", "fun use() = dep.Dependency()");
+                    c.outputJar();
+                    c.outputJdeps();
+                });
+
+        // Nothing recompiles: the jdeps plugin does not run.
+        Dep dep = ctx.rerunCompileTask(c -> {
+            c.removeDependencies(unused);
+            c.makeTransitive(used);
+        });
+
+        assertThat(compiledFromScratch()).isFalse();
+        assertThat(compiledSources()).isEmpty();
+        assertThat(explicitDependencies(dep)).containsExactly(used.singleCompileJar());
+        assertThat(dependencies(dep, Dependency.Kind.UNUSED)).isEmpty();
+    }
+
+    @Test
+    public void testDependencyThatIsNoLongerDirectFailsStrictDeps() {
+        Dep dependency = compileDependency();
+        ctx.runCompileTask(
+                c -> {
+                    c.useBuildToolsApi();
+                    c.incrementalCompilation();
+                    c.compileKotlin();
+                    c.kotlinStrictDeps("error");
+                    c.addDirectDependencies(dependency);
+                    c.addSource("A.kt", A);
+                    c.addSource("UsesDependency.kt", "package ic", "fun use() = dep.Dependency()");
+                    c.outputJar();
+                    c.outputJdeps();
+                });
+
+        ctx.runFailingCompileTaskAndValidateOutput(
+                () -> ctx.rerunCompileTask(c -> {
+                    c.makeTransitive(dependency);
+                    c.updateSource("A.kt", "package ic", "fun a(): Int = 5");
+                }),
+                lines -> {
+                    assertThat(lines)
+                            .contains("|  a direct dependency was removed, compiling from scratch");
+                    assertThat(lines.stream().anyMatch(l -> l.contains("Strict Deps Violations")))
+                            .isTrue();
+                });
+    }
+
+    @Test
+    public void testWithoutInputDigestsCompilesNonIncrementally() {
+        ctx.runCompileTask(
+                c -> {
+                    c.useBuildToolsApi();
+                    c.incrementalCompilation();
+                    c.withoutInputDigests();
+                    c.compileKotlin();
+                    c.addSource("A.kt", A);
+                    c.outputJar();
+                });
+
+        assertThat(ctx.outLines()).contains("incremental compilation unavailable:");
+        ctx.assertFilesExist(DirectoryType.CLASSES, "ic/AKt.class");
+    }
+
+    @Test
+    public void testRootResetBetweenRequestsDisablesIncrementalCompilation() throws IOException {
+        KotlinJvmTestBuilder.restartWorker();
+        try {
+            compileABC(false);
+
+            // A sandboxed worker's directory is reset before each request.
+            try (Stream<Path> paths = Files.walk(KotlinJvmTestBuilder.incrementalCompilationRoot())) {
+                paths.sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
+            }
+            ctx.rerunCompileTask(c -> c.updateSource("A.kt", "package ic", "fun a(): Int = 6"));
+            assertThat(ctx.outLines()).contains("warning: incremental compilation disabled:");
+            ctx.assertFilesExist(DirectoryType.CLASSES, "ic/AKt.class", "ic/BKt.class", "ic/C.class");
+
+            ctx.rerunCompileTask(c -> c.updateSource("A.kt", "package ic", "fun a(): Int = 7"));
+            assertThat(ctx.outLines()).contains("incremental compilation unavailable:");
+            assertThat(ctx.outLines()).doesNotContain("warning: incremental compilation disabled:");
+        } finally {
+            KotlinJvmTestBuilder.restartWorker();
+        }
     }
 
     @Test

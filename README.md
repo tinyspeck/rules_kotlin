@@ -317,23 +317,29 @@ How it works:
 * The worker keeps the state of each target under `bazel-out/_kotlin_ic`: the compiler's
   incremental caches, the classes, the ABI classes, and the jdeps of the previous compilation.
   `bazel clean` removes it.
-* The worker computes the changed and removed sources from the input digests Bazel sends with each
-  work request. Changes in dependencies are detected from snapshots of the classpath entries,
-  which the worker caches by content.
+* The worker identifies file contents by the input digests Bazel sends with each work request,
+  computed with the build's `--digest_function`, and computes the changed and removed sources from
+  them. Changes in dependencies, including added and removed ones, are detected from snapshots of
+  the classpath entries, which the worker caches by digest.
 * Changes to the compilation configuration fall back to a full compile: the compiler options,
-  the compiler plugins and their options, the set of classpath entries, the direct dependencies,
-  and the requested outputs.
+  the compiler plugins and their options, the friend paths, and the requested outputs. So does
+  removing a direct dependency while strict deps are checked, since the check covers only the
+  recompiled sources.
 * Since the outputs depend on state outside the action's inputs, the incremental `KotlinCompile`
   actions are tagged `no-remote-cache-upload`. They can still be served from a remote cache.
 * The jdeps of an incremental compilation keep the dependencies of the previous compilation, since
   the compiler analyzes only the recompiled sources. A dependency a change stops using stays
-  recorded, and is not reported as unused, until the target compiles from scratch.
+  recorded, and is not reported as unused, until it leaves the classpath or the target compiles
+  from scratch.
 * Targets that run kapt, and targets with compiler plugin options that refer to the action's
   directories (`{generatedClasses}`, `{stubs}`, `{temp}`, `{generatedSources}`), compile
   non-incrementally.
 
 Incremental compilation needs the actions to run in persistent workers, which is the default.
-Actions that run another way, e.g. remotely, compile from scratch each time. Build with
+Actions that run another way, e.g. remotely, compile from scratch each time. So do sandboxed
+singleplex workers (`--worker_sandboxing` with `experimental_multiplex_workers = False`): Bazel
+resets their directory before each request, which a worker notices on its second request; it then
+prints a warning and stops keeping state. Build with
 `--define=kt_trace=1` to see which sources the compiler recompiled and why.
 
 # Pruning transitive dependencies
