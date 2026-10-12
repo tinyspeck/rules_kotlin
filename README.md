@@ -325,6 +325,9 @@ How it works:
   and the requested outputs.
 * Since the outputs depend on state outside the action's inputs, the incremental `KotlinCompile`
   actions are tagged `no-remote-cache-upload`. They can still be served from a remote cache.
+* The jdeps of an incremental compilation keep the dependencies of the previous compilation, since
+  the compiler analyzes only the recompiled sources. A dependency a change stops using stays
+  recorded, and is not reported as unused, until the target compiles from scratch.
 * Targets that run kapt, and targets with compiler plugin options that refer to the action's
   directories (`{generatedClasses}`, `{stubs}`, `{temp}`, `{generatedSources}`), compile
   non-incrementally.

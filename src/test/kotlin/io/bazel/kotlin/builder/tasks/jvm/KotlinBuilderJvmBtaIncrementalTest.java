@@ -128,15 +128,19 @@ public class KotlinBuilderJvmBtaIncrementalTest {
 
     @Test
     public void testSignatureChangeCompilesTheDependentSources() {
-        compileABC(false);
+        compileABC(true);
 
-        ctx.rerunCompileTask(c -> {
-            c.updateSource("A.kt", "package ic", "fun a(): Long = 1L");
-            c.updateSource("B.kt", "package ic", "fun b(): Long = a() + 1");
-        });
-        assertThat(compiledSources()).containsExactly("A.kt", "B.kt");
+        // B.kt is unchanged, but its call to a() no longer links.
+        ctx.rerunCompileTask(
+                c -> c.updateSource("A.kt", "package ic", "fun a(offset: Int = 0): Int = 1 + offset"));
+        assertThat(compiledSources()).containsAtLeast("A.kt", "B.kt");
+        assertThat(compiledSources()).doesNotContain("C.kt");
+        // The ABI of every compile iteration is kept.
+        ctx.assertFilesExist(DirectoryType.ABI_CLASSES, "ic/AKt.class", "ic/BKt.class", "ic/C.class");
 
-        ctx.rerunCompileTask(c -> c.updateSource("A.kt", "package ic", "fun a(): Long = 1L", "fun x() = 0"));
+        ctx.rerunCompileTask(
+                c -> c.updateSource(
+                        "A.kt", "package ic", "fun a(offset: Int = 0): Int = 1 + offset", "fun x() = 0"));
         assertThat(compiledSources()).doesNotContain("C.kt");
     }
 
