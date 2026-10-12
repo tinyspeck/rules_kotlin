@@ -45,6 +45,9 @@ import kotlin.concurrent.withLock
 /** Bumped whenever the layout or the meaning of the persisted state changes. */
 private const val STATE_FORMAT = "1"
 
+/** The exit code of a compilation that failed on errors in the sources. */
+private const val COMPILATION_ERROR = 1
+
 /** How long a classpath snapshot that no compilation used is kept. */
 private val SNAPSHOT_RETENTION: Duration = Duration.ofDays(3)
 
@@ -246,9 +249,10 @@ class IncrementalCompilation(
         )
       } catch (e: CompilationStatusException) {
         // The compiler restores its previous outputs and leaves its caches untouched when a
-        // compilation fails. Keep the state only if it did: otherwise (e.g. a failed fallback to a
-        // full compilation) the next compilation starts over.
-        if (stamps(state.classes) == classesBefore) {
+        // compilation fails on errors in the sources. Keep the state only if it did: otherwise
+        // (e.g. a failed fallback to a full compilation, an internal error, or running out of
+        // memory) the next compilation starts over.
+        if (e.status == COMPILATION_ERROR && stamps(state.classes) == classesBefore) {
           Files.delete(state.inProgress)
         } else {
           state.reset()
@@ -461,6 +465,9 @@ class IncrementalCompilation(
     }
     add("format", STATE_FORMAT)
     add("runtime", runtimeKey)
+    // The compiler resolves the JDK classes against the worker's JVM, which no snapshot covers.
+    add("jdk", System.getProperty("java.home"))
+    add("jdk_version", System.getProperty("java.runtime.version"))
     with(task.info) {
       add("module", moduleName)
       add("jvm_target", toolchainInfo.jvm.jvmTarget)
@@ -491,6 +498,7 @@ class IncrementalCompilation(
       Files.isRegularFile(state.record) &&
         Files.isDirectory(state.caches) &&
         Files.isDirectory(state.classes) &&
+        (task.outputs.abijar.isEmpty() || Files.isDirectory(state.abiClasses)) &&
         (task.outputs.jdeps.isEmpty() || Files.isRegularFile(state.jdeps))
     if (!complete) {
       return null
