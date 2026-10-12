@@ -16,11 +16,12 @@
  */
 package io.bazel.kotlin.builder.tasks.jvm.btapi
 
-import com.google.devtools.build.lib.view.proto.Deps
 import io.bazel.kotlin.builder.tasks.BtapiRuntime
 import io.bazel.kotlin.builder.toolchain.CompilationStatusException
 import io.bazel.kotlin.builder.toolchain.CompilationTaskContext
 import io.bazel.kotlin.builder.utils.fingerprintOf
+import io.bazel.kotlin.builder.utils.jars.SourceDependenciesFile
+import io.bazel.kotlin.builder.utils.jars.jdepsOf
 import io.bazel.kotlin.compiler.CompilerPluginSpec
 import io.bazel.kotlin.compiler.IncrementalCompilationSpec
 import io.bazel.kotlin.compiler.KotlinBtapiCompiler
@@ -57,8 +58,8 @@ private val SNAPSHOT_RETENTION: Duration = Duration.ofDays(3)
 
 /**
  * The jdeps plugin options that list the classpath. The state survives their changes: the
- * compiler detects classpath changes from the snapshots, and [IncrementalCompilation] fixes up the
- * jdeps.
+ * compiler detects classpath changes from the snapshots, and [IncrementalCompilation] writes the
+ * jdeps from the dependencies of each source.
  */
 private val JDEPS_CLASSPATH_OPTIONS = setOf("direct_dependencies", "full_classpath")
 
@@ -106,6 +107,14 @@ class IncrementalCompilation(
     var users = 0
   }
 
+  /** Where the compiler plugins of a compilation write to, see [compile]. */
+  class PluginOutputs(
+    /** The directory the ABI plugin writes the ABI classes to. */
+    val abiClasses: String,
+    /** The file the jdeps plugin records the dependencies of each source in. */
+    val sourceDependencies: String,
+  )
+
   /** What [compile] hands to the compiler invocation. */
   class Invocation(
     val sources: List<String>,
@@ -141,7 +150,9 @@ class IncrementalCompilation(
     val classes: Path = dir.resolve("classes")
     val abiClasses: Path = dir.resolve("abi_classes")
     val abiRound: Path = dir.resolve("abi_round")
-    val jdeps: Path = dir.resolve("jdeps")
+
+    /** The dependencies of each source, from which the jdeps are written. */
+    val sourceDependencies: Path = dir.resolve("source_deps")
     val stagedSources: Path = dir.resolve("srcs")
 
     /** Snapshots of the classpath entries the request has no digest for, recomputed each time. */
@@ -164,7 +175,7 @@ class IncrementalCompilation(
    * (see [unavailability]) and the caller should compile as usual.
    *
    * @param classpath the compile classpath.
-   * @param plugins the compiler plugins, given the directory the ABI plugin writes to.
+   * @param plugins the compiler plugins, given where they write to.
    * @param invoke runs the compiler and returns its output lines; throws
    *   [CompilationStatusException] when the compilation fails.
    */
@@ -174,7 +185,7 @@ class IncrementalCompilation(
     runtime: BtapiRuntime,
     compiler: KotlinBtapiCompiler,
     classpath: List<String>,
-    plugins: (abiOutputDir: String) -> List<CompilerPluginSpec>,
+    plugins: (PluginOutputs) -> List<CompilerPluginSpec>,
     invoke: (Invocation) -> List<String>,
   ): List<String>? {
     val state =
@@ -242,7 +253,7 @@ class IncrementalCompilation(
     runtime: BtapiRuntime,
     compiler: KotlinBtapiCompiler,
     classpath: List<String>,
-    plugins: (abiOutputDir: String) -> List<CompilerPluginSpec>,
+    plugins: (PluginOutputs) -> List<CompilerPluginSpec>,
     invoke: (Invocation) -> List<String>,
     state: TargetState,
   ): List<String> {
@@ -255,7 +266,8 @@ class IncrementalCompilation(
         .parent
     val runtimeKey =
       runtime.classpathFingerprint.ifEmpty { fingerprintOf(runtime.apiImplClasspath, digests) }
-    val pluginSpecs = plugins(state.abiRound.toString())
+    val pluginSpecs =
+      plugins(PluginOutputs(state.abiRound.toString(), state.sourceDependencies.toString()))
     val fingerprint = fingerprint(task, runtimeKey, pluginSpecs, requestRoot, digests)
     val directDependencies = task.inputs.directDependenciesList.toSet()
 
@@ -310,7 +322,7 @@ class IncrementalCompilation(
     Files.createDirectories(state.abiClasses)
     deleteRecursively(state.abiRound)
     Files.createDirectories(state.abiRound)
-    seedJdeps(task, state, previous != null)
+    prepareSourceDependencies(task, state, sources.keys, previous != null)
     Files.write(state.inProgress, ByteArray(0))
 
     val classesBefore = stamps(state.classes)
@@ -353,12 +365,7 @@ class IncrementalCompilation(
       copyTree(state.abiClasses, Paths.get(task.directories.abiClasses))
     }
     if (task.outputs.jdeps.isNotEmpty()) {
-      reconcileJdeps(Paths.get(task.outputs.jdeps), task, classpath)
-      Files.copy(
-        Paths.get(task.outputs.jdeps),
-        state.jdeps,
-        StandardCopyOption.REPLACE_EXISTING,
-      )
+      writeJdeps(task, state)
     }
     writePreviousCompilation(
       state,
@@ -451,58 +458,50 @@ class IncrementalCompilation(
   }
 
   /**
-   * The jdeps plugin analyzes only the recompiled sources and merges the dependencies recorded in
-   * its output file, so the output starts out with the dependencies of the previous compilation.
+   * The jdeps plugin replaces the dependencies of the sources it analyzes in the target's
+   * [TargetState.sourceDependencies] and keeps the others'. Drops the dependencies of the sources
+   * the target no longer has, or starts over without a previous compilation.
    */
-  private fun seedJdeps(
+  private fun prepareSourceDependencies(
     task: JvmCompilationTask,
     state: TargetState,
+    sources: Set<String>,
     hasPrevious: Boolean,
   ) {
     if (task.outputs.jdeps.isEmpty()) {
       return
     }
-    val output = Paths.get(task.outputs.jdeps)
-    if (hasPrevious) {
-      Files.copy(state.jdeps, output, StandardCopyOption.REPLACE_EXISTING)
-    } else {
-      Files.deleteIfExists(output)
-    }
+    val dependencies =
+      if (hasPrevious) {
+        // The compiler reports a source by the path it was given, which may be a link.
+        val current = sources.map(::canonicalPath).toSet()
+        SourceDependenciesFile.read(state.sourceDependencies).filterKeys {
+          it.isEmpty() || canonicalPath(it) in current
+        }
+      } else {
+        emptyMap()
+      }
+    SourceDependenciesFile.write(state.sourceDependencies, dependencies)
   }
 
   /**
-   * The seeded jdeps can list dependencies that are no longer on the classpath and unused
-   * dependencies that are no longer direct, and the plugin does not run when the compiler
-   * recompiles nothing. Drops the dependencies that left the classpath and recomputes the unused
-   * direct dependencies.
+   * Writes the jdeps of every source of the target: the plugin does not run when the compiler
+   * recompiles nothing, and analyzes only the recompiled sources when it does. They are the jdeps
+   * a full compilation writes.
    */
-  private fun reconcileJdeps(
-    output: Path,
+  private fun writeJdeps(
     task: JvmCompilationTask,
-    classpath: List<String>,
+    state: TargetState,
   ) {
-    val jdeps = Files.newInputStream(output).use(Deps.Dependencies::parseFrom)
-    val onClasspath = (task.inputs.classpathList + classpath).toSet()
-    val used =
-      jdeps.dependencyList.filter {
-        it.kind != Deps.Dependency.Kind.UNUSED && it.path in onClasspath
-      }
-    val explicit = used.filter { it.kind == Deps.Dependency.Kind.EXPLICIT }.map { it.path }.toSet()
-    val unused =
-      task.inputs.directDependenciesList.distinct().filterNot(explicit::contains).map {
-        Deps.Dependency
-          .newBuilder()
-          .setKind(Deps.Dependency.Kind.UNUSED)
-          .setPath(it)
-          .build()
-      }
-    val reconciled =
-      jdeps
-        .toBuilder()
-        .clearDependency()
-        .addAllDependency((used + unused).sortedBy { it.path })
-        .build()
-    Files.newOutputStream(output).use(reconciled::writeTo)
+    val dependencies = SourceDependenciesFile.read(state.sourceDependencies).values
+    val jdeps =
+      jdepsOf(
+        task.info.label,
+        task.inputs.directDependenciesList,
+        dependencies.flatMapTo(LinkedHashSet()) { it.explicitJars },
+        dependencies.flatMapTo(LinkedHashSet()) { it.implicitJars },
+      )
+    Files.newOutputStream(Paths.get(task.outputs.jdeps)).use(jdeps::writeTo)
   }
 
   /**
@@ -647,7 +646,7 @@ class IncrementalCompilation(
         Files.isDirectory(state.caches) &&
         Files.isDirectory(state.classes) &&
         (task.outputs.abijar.isEmpty() || Files.isDirectory(state.abiClasses)) &&
-        (task.outputs.jdeps.isEmpty() || Files.isRegularFile(state.jdeps))
+        (task.outputs.jdeps.isEmpty() || Files.isRegularFile(state.sourceDependencies))
     if (!complete) {
       return null
     }
@@ -700,6 +699,17 @@ class IncrementalCompilation(
  */
 private fun Map<String, String>.digestOf(path: String): String? =
   get(path)?.takeIf { it.isNotEmpty() }
+
+private fun canonicalPath(path: String): String =
+  try {
+    Paths.get(path).toRealPath().toString()
+  } catch (_: IOException) {
+    Paths
+      .get(path)
+      .toAbsolutePath()
+      .normalize()
+      .toString()
+  }
 
 /** The size and modification time of every file under [dir], by relative path. */
 private fun stamps(dir: Path): Map<String, FileStamp> {

@@ -34,7 +34,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.jar.JarFile;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -90,13 +92,35 @@ public class KotlinBuilderJvmBtaIncrementalTest {
     }
 
     private static Dep compileDependency() {
+        return compileDependency("dep", "Dependency");
+    }
+
+    private static Dep compileDependency(String packageName, String className) {
         return ctx.runCompileTask(
                 c -> {
                     c.useBuildToolsApi();
                     c.compileKotlin();
-                    c.addSource("Dependency.kt", "package dep", "class Dependency");
+                    c.addSource(className + ".kt", "package " + packageName, "class " + className);
                     c.outputJar();
                 });
+    }
+
+    /** Compiles the sources with the dependencies, incrementally or not, and returns the jdeps. */
+    private static Dependencies compileWithDependencies(
+            boolean incremental, Map<String, String[]> sources, Dep... dependencies) {
+        Dep dep = ctx.runCompileTask(
+                c -> {
+                    c.useBuildToolsApi();
+                    if (incremental) {
+                        c.incrementalCompilation();
+                    }
+                    c.compileKotlin();
+                    c.addDirectDependencies(dependencies);
+                    sources.forEach(c::addSource);
+                    c.outputJar();
+                    c.outputJdeps();
+                });
+        return jdeps(dep);
     }
 
     private static List<String> jarEntries(String jar) {
@@ -224,10 +248,58 @@ public class KotlinBuilderJvmBtaIncrementalTest {
     }
 
     private static List<String> dependencies(Dep dep, Dependency.Kind kind) {
-        return jdeps(dep).getDependencyList().stream()
+        return dependencies(jdeps(dep), kind);
+    }
+
+    private static List<String> dependencies(Dependencies jdeps, Dependency.Kind kind) {
+        return jdeps.getDependencyList().stream()
                 .filter(d -> d.getKind() == kind)
                 .map(Dependency::getPath)
                 .collect(Collectors.toList());
+    }
+
+    @Test
+    public void testJdepsOfAnIncrementalCompilationMatchAFullCompilation() {
+        Dep first = compileDependency("first", "First");
+        Dep second = compileDependency("second", "Second");
+        Map<String, String[]> sources = new LinkedHashMap<>();
+        sources.put("A.kt", new String[] {"package ic", "fun a() = first.First()"});
+        sources.put("B.kt", new String[] {"package ic", "fun b() = second.Second()"});
+        sources.put("C.kt", C);
+        compileWithDependencies(true, sources, first, second);
+
+        // A.kt stops using the first dependency; B.kt, which uses the second, is not recompiled.
+        String[] a = {"package ic", "fun a(): Any = 1"};
+        Dependencies incremental =
+                jdeps(ctx.rerunCompileTask(c -> c.updateSource("A.kt", a)));
+        assertThat(compiledSources()).containsExactly("A.kt");
+
+        sources.put("A.kt", a);
+        Dependencies full = compileWithDependencies(false, sources, first, second);
+        assertThat(incremental.getDependencyList())
+                .containsExactlyElementsIn(full.getDependencyList())
+                .inOrder();
+        assertThat(dependencies(incremental, Dependency.Kind.UNUSED))
+                .containsExactly(first.singleCompileJar());
+        assertThat(dependencies(incremental, Dependency.Kind.EXPLICIT))
+                .contains(second.singleCompileJar());
+    }
+
+    @Test
+    public void testRemovedSourceDropsItsDependencies() {
+        Dep dependency = compileDependency();
+        Map<String, String[]> sources = new LinkedHashMap<>();
+        sources.put("A.kt", A);
+        sources.put("UsesDependency.kt", new String[] {"package ic", "fun use() = dep.Dependency()"});
+        compileWithDependencies(true, sources, dependency);
+
+        Dependencies jdeps = jdeps(ctx.rerunCompileTask(c -> c.removeSource("UsesDependency.kt")));
+
+        assertThat(compiledFromScratch()).isFalse();
+        assertThat(dependencies(jdeps, Dependency.Kind.UNUSED))
+                .containsExactly(dependency.singleCompileJar());
+        assertThat(dependencies(jdeps, Dependency.Kind.EXPLICIT))
+                .doesNotContain(dependency.singleCompileJar());
     }
 
     @Test

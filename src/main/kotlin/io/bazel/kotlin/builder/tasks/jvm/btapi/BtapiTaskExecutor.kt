@@ -267,8 +267,8 @@ class BtapiTaskExecutor(
             runtime,
             compiler,
             classpath = computeClasspath(),
-            plugins = { abiOutputDir ->
-              compilerPlugins(runtime, abiOutputDir, mergeJdeps = true)
+            plugins = { outputs ->
+              compilerPlugins(runtime, outputs.abiClasses, outputs.sourceDependencies)
             },
           ) { invocation ->
             invokeMainCompilation(
@@ -293,7 +293,7 @@ class BtapiTaskExecutor(
       sources = inputs.javaSourcesList + inputs.kotlinSourcesList,
       classpath = computeClasspath() + directories.generatedClasses,
       destination = directories.classes,
-      descriptors = compilerPlugins(runtime, directories.abiClasses, mergeJdeps = false),
+      descriptors = compilerPlugins(runtime, directories.abiClasses),
       incremental = null,
     )
   }
@@ -338,12 +338,13 @@ class BtapiTaskExecutor(
    * The compiler plugins of the main compilation.
    *
    * @param abiOutputDir the directory the ABI plugin writes the ABI classes to.
-   * @param mergeJdeps whether the jdeps plugin merges the dependencies recorded in its existing output.
+   * @param sourceDependencies the file the jdeps plugin records the dependencies of each source
+   *   in, for incremental compilation.
    */
   private fun JvmCompilationTask.compilerPlugins(
     runtime: BtapiRuntime,
     abiOutputDir: String,
-    mergeJdeps: Boolean,
+    sourceDependencies: String? = null,
   ): List<PluginDescriptor> {
     val descriptors = mutableListOf<PluginDescriptor>()
 
@@ -360,7 +361,7 @@ class BtapiTaskExecutor(
               inputs.directDependenciesList.map { "direct_dependencies=$it" } +
               inputs.classpathList.map { "full_classpath=$it" } +
               listOf("strict_kotlin_deps=${info.strictKotlinDeps}") +
-              (if (mergeJdeps) listOf("merge_existing=true") else emptyList()),
+              listOfNotNull(sourceDependencies?.let { "per_source_output=$it" }),
         ),
       )
     }

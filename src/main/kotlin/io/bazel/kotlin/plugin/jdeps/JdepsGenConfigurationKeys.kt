@@ -43,13 +43,13 @@ object JdepsGenConfigurationKeys {
     )
 
   /**
-   * Whether the used dependencies recorded in an existing output file are merged into the written
-   * jdeps. Incremental compilation analyzes only the recompiled sources, possibly over several
-   * iterations, so the output accumulates the dependencies of the previous build and of every
-   * iteration.
+   * The file that records the dependencies of each source, see
+   * [io.bazel.kotlin.builder.utils.jars.SourceDependenciesFile]. Incremental compilation analyzes
+   * only the recompiled sources, possibly over several iterations, and computes the jdeps of the
+   * whole target from it.
    */
-  val MERGE_EXISTING: CompilerConfigurationKey<Boolean> =
+  val PER_SOURCE_OUTPUT: CompilerConfigurationKey<String> =
     CompilerConfigurationKey.create(
-      JdepsGenCommandLineProcessor.MERGE_EXISTING_OPTION.description,
+      JdepsGenCommandLineProcessor.PER_SOURCE_OUTPUT_OPTION.description,
     )
 }
