@@ -14,7 +14,7 @@ This file is the shared guide for any coding agent; `CLAUDE.md` points here and
   Most work targets this branch. It is re-cut on each upstream rebase, so every
   Slack commit on it must cherry-pick cleanly onto the next upstream tag.
 - `master` is the fork's default branch. It is an older upstream snapshot
-  (Bazel 7.5.0, Makefile-driven); Speck reads `speck.yaml` and `SPECK.md` from
+  (Makefile-driven, now on Bazel 9.3.1); Speck reads `speck.yaml` and `SPECK.md` from
   it, so the Speck setup lives there too.
 - Keep changes small and upstreamable where possible, and say in the PR when a
   change is fork-only. The Speck/DevSpace files (`devspaces.yaml`,
@@ -42,7 +42,7 @@ Bazel is pinned in `.bazelversion`; use bazelisk. The two branches differ:
 
 | Task | `slack/v2.4.20-rebase` | `master` |
 | --- | --- | --- |
-| Bazel | 9.2.0 (moving to 9.3.1) | 7.5.0 |
+| Bazel | 9.2.0 (moving to 9.3.1) | 9.3.1 |
 | Unit tests | `bazel test //:all_tests` | same |
 | ktlint check | `bazel test //... --test_tag_filters=ktlint --build_tests_only` | same, or `make ktlint.check` |
 | ktlint fix | `bazel run //:ktlint_fix_all` | `make ktlint.fix` |

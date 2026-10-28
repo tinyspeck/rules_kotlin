@@ -13,8 +13,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 # The Bazel version rules_kotlin and slack-android-ng are moving to
 # (tinyspeck/slack-android-ng#129113). bazelisk reads .bazelversion at runtime,
 # so a branch that pins something else still works; it just downloads that
-# version on first use instead of finding it here. Bump this with .bazelversion
-# on slack/v2.4.20-rebase. Older versions are deliberately not baked in: the
+# version on first use instead of finding it here. master pins this version;
+# bump it together with .bazelversion there and on slack/v2.4.20-rebase. Older versions are deliberately not baked in: the
 # integration tests download their own 7.x/8.x through bazel_binaries.
 ARG BAZEL_VERSION=9.3.1
 ARG BAZELISK_VERSION=v1.29.0
