@@ -1,51 +1,77 @@
-# Working in rules_kotlin on a Speck DevSpace Pod
+# Speck in rules_kotlin
 
-Read `CLAUDE.md` first for the repo layout and conventions. This file covers
-what is different on a pod.
+This file is appended to Speck's instructions, read from `master`. It covers
+what is specific to Speck on a DevSpace Pod; read `AGENTS.md` (and `CLAUDE.md`,
+which points to it) for the repo itself.
 
-## Running Bazel
+## Which branch
 
-`bazel` is not on the allowlist. Every call goes through
-`scripts/speck_bazel.sh` in the `devspace` container:
+Slack Android consumes `slack/v2.4.20-rebase`, not `master`. Unless the person
+says otherwise, base work on that branch, and open PRs against it. `master` is an
+older upstream snapshot that holds this Speck setup. A pod on a branch that
+lacks `devspaces.yaml` and `devspace/speck_bazel.sh` has no toolchain and no
+allowed commands; say so rather than working around it.
 
-```sh
-scripts/speck_bazel.sh test //:all_tests
-scripts/speck_bazel.sh test //src/test/kotlin/io/bazel/kotlin/builder:builder_tests --test_output=errors
-scripts/speck_bazel.sh test //src/test/kotlin/io/bazel/kotlin:KotlinJvmBasicAssertionTest
-scripts/speck_bazel.sh query 'tests(//src/test/kotlin/io/bazel/worker:all)'
-scripts/speck_bazel.sh ktlint-check
-scripts/speck_bazel.sh ktlint-fix
-scripts/speck_bazel.sh docs-regen
-```
+## The pod is the verifier
 
-- Explicit labels only (no `//...` or `:all`); find labels with `query`.
-- The first build fetches the pinned Bazel and the Kotlin compiler and
-  maven deps, so it takes several minutes. Run full suites with
-  `exec_background`, not `exec`.
-- After two failures in a row the script refuses to run. Stop and report the
-  failure; rerun with `--user-approved-retry` only when the person says to.
-- Run the narrowest test target that covers the change first, then
-  `//:all_tests` before opening a PR.
+This fork has no PR CI. Unlike slack-android-ng, opening a draft PR reaches no
+checks, so do not wait on CI that will never report. Before calling a change
+done, run the checks from the Validation table in `AGENTS.md`, and
+`devspace/speck_bazel.sh preflight` before asking for review. In the PR, list
+what ran and what could not (integration tests, RBE, macOS/Windows), as
+evidence, not as a claim that the change is safe.
 
-## What a pod can and can't verify
+## What runs on the pod
 
-- **Can:** the unit suites (`//:all_tests`, `//:all_local_tests`), individual
-  builder and assertion tests, ktlint, and the stardoc docs check
-  (`scripts/speck_bazel.sh test //docs:are_docs_up_to_date_test`).
-- **Can't:**
-  - `examples/` integration tests. CI runs them as separate workspaces with
-    `--config=rbe`, and the pod has no RBE credentials.
-  - Android rules end to end. The pod has no Android SDK (`scripts/install_android_sdk`
-    is not run), so `kt_android_*` changes are verified in CI only.
-  - The `.bazelci/presubmit.yml` matrix (ubuntu2204/2404, buildifier) and the
-    release archive (`scripts/release.sh`).
+Only `devspace/speck_bazel.sh`, in the `devspace` container. Call it exactly
+as `devspace/speck_bazel.sh ...`, with no `./` prefix: the allowlist matches the
+command literally. Run it with no arguments for its usage. The main commands:
 
-  Say which of these a change depends on in the PR description, rather than
-  claiming it was tested.
+- `test <label> ... [--test_filter=...] [--test_output=errors]`, `build`, `query`
+- `preflight`: `//:all_tests`, ktlint, the docs check, and buildifier when the image has it
+- `ktlint-check`, `ktlint-fix`, `docs-check`, `docs-regen`, `buildifier-check`, `buildifier-fix`
+- `shellcheck`, `bats`: for changes to the script itself
+- `archive-integrity <sha>`: the slack-android-ng pin for a pushed commit
 
-## Formatting
+Labels must be explicit (no `//...`, `:all`, `*`); `//:all_tests` is the full
+unit suite. You do not need it for searching: `rg`, `fd` and file tools work
+from the sidecar, and git goes through the git tools.
 
-There is no buildifier on the pod. Match the surrounding Starlark style by
-hand (4-space indents, trailing commas, sorted `load` symbols) and let CI's
-buildifier check confirm it. Kotlin formatting is checked with `ktlint-check`
-and fixed with `ktlint-fix`.
+## Scope and time
+
+Run the narrowest target that covers the change first, then widen. `exec`
+stops a command after 530 seconds; the first build on a fresh pod downloads
+Bazel, the Kotlin compiler and Maven artifacts and can take longer, so run
+`preflight`, `//:all_tests` and any first build with `exec_background`.
+
+## When it fails
+
+After two failures in a row the script refuses to run. Read the failure once.
+If the fix is clear, make it and run again; if not, stop and report the output
+and what you think it means. Retry with `--user-approved-retry` first only when
+the person says to. Never delete caches or the Bazel output base to free space;
+report the disk error instead. If a download from Maven Central or GitHub
+fails, report it; do not change repository URLs to get around it.
+
+Some failures are the image, not your change: until pods move to the
+rules_kotlin image (see `devspaces.yaml`), there is no C++ compiler, buildifier
+or BATS on the pod, so targets that compile C++ or those subcommands fail.
+Say which it was.
+
+## Verifying in Slack Android
+
+The consumer check for a rules_kotlin change is slack-android-ng's Bazel CI
+with its pin moved to the new commit. Do it only when the person asks, since it
+is a PR in another repo:
+
+1. Push the commit to the fork branch.
+2. Run `devspace/speck_bazel.sh archive-integrity <full sha>`, which prints the
+   `RULES_KOTLIN_SHA` and `archive_override` block.
+3. Follow `.claude/skills/bump-slack-android/SKILL.md` to open a draft PR in
+   tinyspeck/slack-android-ng, in a pod for that repo.
+
+## Pull requests
+
+There is no PR template. Say what changed and why, whether it is fork-only or
+upstreamable, and what ran on the pod. Open PRs as drafts and leave them as
+drafts; mark one ready only when the person asks.

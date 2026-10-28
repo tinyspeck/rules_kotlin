@@ -1,3 +1,11 @@
+# DevSpace Pod configuration for rules_kotlin.
+#
+# Checkpoint reads this file at the commit of the branch a pod attaches to, so
+# a branch without it gets a generic pod with no toolchain. After changing it,
+# reprovision the pod (a running pod keeps the config it started with).
+# speck.yaml and SPECK.md are different: Speck reads those from the default
+# branch (master).
+
 # Repo-wide opt-in for Speck. When true, the Speck sidecar is injected on pod
 # provision and this repo shows up in the Speck "New Session" picker.
 speck_enabled: true
@@ -8,18 +16,25 @@ services:
     # same one the generated default devspaces.yaml uses.
     omni_service_id: 6b2e0288-9873-477f-861a-9b8cae92ac6d
     containers:
+      # The name speck.yaml's allowed_commands refer to; keep the two in sync.
       - name: devspace
-        # Borrowed from slack-android-ng: Ubuntu 22.04 with bazelisk, a JDK, rg,
-        # fd and ast-grep. bazelisk reads .bazelversion, so `bazel` here resolves
-        # to the version this repo pins (downloaded on first use), not the one
-        # baked into the image. Swap for a rules_kotlin image if the two repos'
-        # needs drift apart.
+        # Borrowed from slack-android-ng until this repo's own image exists:
+        # Ubuntu 22.04 with bazelisk, a JDK, rg, fd and ast-grep, but no C++
+        # compiler, buildifier, BATS or protoc. bazelisk reads .bazelversion,
+        # so `bazel` resolves to the version the branch pins.
+        #
+        # Replace with tinyspeck/rules_kotlin:rules-kotlin-devspace (built from
+        # devspace/Dockerfile) once the pipeline in devspace/gondola.yaml is
+        # registered and has built once. Checkpoint only accepts image keys
+        # Gondola tracks, so switching earlier breaks every pod on the branch.
         image: tinyspeck/slack-android-ng:slack-android-ng-devspace
         request:
           # The builder tests compile Kotlin through persistent workers; 4Gi
           # (the default) is not enough for kotlinc plus the Bazel server.
           memory: 12Gi
           cpu: 4
+        # No credentials to install: rules_kotlin fetches only public Maven and
+        # GitHub artifacts, so there is no run.sh like slack-android-ng's.
         command: ["sleep", "infinity"]
     nebula:
       - port: 5000

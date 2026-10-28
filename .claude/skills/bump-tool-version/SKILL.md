@@ -1,28 +1,32 @@
 ---
 name: bump-tool-version
-description: Bump the Kotlin compiler, KSP, ktlint or another pinned tool in rules_kotlin. Use when asked to upgrade Kotlin or any tool pinned in src/main/starlark/core/repositories/versions.bzl.
+description: Bump a pinned tool in rules_kotlin (Kotlin compiler, KSP, ktlint, Bazel, protobuf), including the files that must move with it.
 ---
 
 # Bump a pinned tool version
 
-Every downloaded tool is a `version(...)` entry in
-`src/main/starlark/core/repositories/versions.bzl`, with `version`,
-`url_templates` and `sha256`. `KOTLIN_CURRENT_COMPILER_RELEASE` is the Kotlin
-compiler; the KSP entry's version is `<kotlin>-<ksp>` and must match the
-compiler.
+## Where versions live
 
-1. Update `version` and `sha256` for the entry. Get the sha256 from the
-   release page's published checksum, not from a guess. If you can't fetch it,
-   say so and leave the PR as a draft for a person to fill in.
-2. Bumping Kotlin's major or minor version: check whether
-   `src/main/starlark/` needs a new `rkt_<major>_<minor>` directory and whether
-   `kotlin/internal/opts.bzl` options changed (see `CONTRIBUTING.md`,
-   "Versioning"). Bump KSP to its release for the new compiler at the same
-   time.
-3. Maven-resolved deps are pinned in `kotlin_rules_maven_install.json`; when
-   `MODULE.bazel`'s maven artifacts change, repin with
-   `REPIN=1 bazel run @kotlin_rules_maven//:pin` (not runnable through
-   `scripts/speck_bazel.sh`; ask the person to run it).
-4. Verify: `scripts/speck_bazel.sh test //:all_tests`, then the docs check if
-   any docstrings mention the version.
-5. Add a line to `CHANGELOG.md`.
+- Kotlin compiler, KSP, ktlint and other downloaded tools:
+  `src/main/starlark/core/repositories/versions.bzl` (version, URL and
+  `sha256` for each).
+- Bazel: `.bazelversion`. Also bump `BAZEL_VERSION` in `devspace/Dockerfile`
+  so pods don't re-download it.
+- protobuf: `proto_version` in `MODULE.bazel`. Also bump `PROTOC_VERSION` in
+  `devspace/Dockerfile`.
+- Maven artifacts: `MODULE.bazel` (`maven.install`) with lock files
+  `kotlin_rules_maven_install.json` and, on `slack/v2.4.20-rebase`,
+  `kotlin_rules_maven_test_install.json`.
+
+## Steps
+
+1. Change the version and its `sha256` together. Take the checksum from the
+   release's published checksum, not from a guess.
+2. For Maven changes, repin: `REPIN=1 bazel run @unpinned_kotlin_rules_maven//:pin`
+   (or `@unpinned_kotlin_rules_maven_test//:pin`). `devspace/speck_bazel.sh`
+   can't run this; ask the person to repin, or say in the PR that the lock file
+   needs it.
+3. On a pod, run `devspace/speck_bazel.sh preflight` (with `exec_background`).
+4. Kotlin or KSP bumps also need to match slack-android-ng, which pins the same
+   versions through `rules_kotlin_extensions`. Mention the matching change in
+   the PR.
