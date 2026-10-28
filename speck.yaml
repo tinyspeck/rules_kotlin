@@ -1,0 +1,24 @@
+# Speck configuration for this repo.
+#
+# Read from the default branch, so a feature branch cannot widen it: these
+# entries take effect once this file is on master.
+
+# Commands Speck may run on a DevSpace Pod, per container.
+#
+# Speck runs in a sidecar that shares the /mnt/devspace checkout with the
+# `devspace` container but carries none of the toolchain. Reading and editing
+# files already works from the sidecar, so the only commands listed here are the
+# ones that need Bazel and the JDK.
+#
+# Bazel is reached only through scripts/speck_bazel.sh, which checks each call
+# before running it (explicit labels, a short flag allowlist, a failure
+# breaker). See its header for why it is a script and not a `bazel` entry.
+#
+# These entries are not a sandbox: speck_bazel.sh and every BUILD and .bzl file
+# Bazel evaluates sit in the checkout Speck can edit. What the script limits is
+# disk and time, not what code runs.
+allowed_commands:
+  containers:
+    devspace:
+      bash:
+        - "scripts/speck_bazel.sh:*"

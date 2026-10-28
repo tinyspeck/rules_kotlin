@@ -1,0 +1,32 @@
+# Repo-wide opt-in for Speck. When true, the Speck sidecar is injected on pod
+# provision and this repo shows up in the Speck "New Session" picker.
+speck_enabled: true
+
+services:
+  rules-kotlin:
+    # Checkpoint's shared DevSpace Pod identity (Pods\DEVSPACE_POD_OMNI_ID), the
+    # same one the generated default devspaces.yaml uses.
+    omni_service_id: 6b2e0288-9873-477f-861a-9b8cae92ac6d
+    containers:
+      - name: devspace
+        # Borrowed from slack-android-ng: Ubuntu 22.04 with bazelisk, a JDK, rg,
+        # fd and ast-grep. bazelisk reads .bazelversion, so `bazel` here resolves
+        # to the version this repo pins (downloaded on first use), not the one
+        # baked into the image. Swap for a rules_kotlin image if the two repos'
+        # needs drift apart.
+        image: tinyspeck/slack-android-ng:slack-android-ng-devspace
+        request:
+          # The builder tests compile Kotlin through persistent workers; 4Gi
+          # (the default) is not enough for kotlinc plus the Bazel server.
+          memory: 12Gi
+          cpu: 4
+        command: ["sleep", "infinity"]
+    nebula:
+      - port: 5000
+        groups: [dev]
+    consul-template:
+      ctmpl_files:
+        oidc-slauth-identity-token: |
+          {{ with secret "identity/oidc/token/slauth-dev" -}}
+            {{ .Data.token }}
+          {{- end }}
