@@ -8,8 +8,10 @@ set -euo pipefail
 # slack-android-ng's speck_bazel.sh there is no --user-requested gate. Instead:
 #
 # - Targets must be explicit labels. No `//...`, `:all`, or `*` wildcards, so a
-#   call cannot turn into a whole-repo build by accident. //:all_tests is the
-#   full unit suite, and `preflight` runs the CI-aligned set.
+#   call cannot turn into a whole-repo build by accident. The one exception is
+#   `test //src/...`, the unit-test pattern upstream CI (.bazelci/tests.yml)
+#   runs: //:all_tests leaves out the Starlark analysis tests under
+#   src/test/starlark, so it is not the full suite. `preflight` runs //src/....
 # - Flags are limited to --test_filter and --test_output, since others change
 #   what builds (--config, --define, --override_repository) or how much
 #   (--jobs, --keep_going).
@@ -41,7 +43,7 @@ Commands:
   build <label> [<label> ...]       up to ${max_targets} explicit labels
   test  <label> [<label> ...] [--test_filter=<filter>] [--test_output=errors|summary|all]
   run   <target>                    a formatter or doc generator, listed below
-  preflight                         //:all_tests, ktlint-check, docs-check, buildifier-check
+  preflight                         test //src/..., ktlint-check, docs-check, buildifier-check
   ktlint-check | ktlint-fix         ktlint over the builder sources
   docs-check   | docs-regen         docs/kotlin.md against the Starlark docstrings
   buildifier-check | buildifier-fix Starlark formatting and lint
@@ -56,7 +58,8 @@ Examples:
   devspace/speck_bazel.sh query 'tests(//src/test/kotlin/io/bazel/worker:all)'
   devspace/speck_bazel.sh preflight
 
-Refused: //..., :all and * wildcards in build and test, other bazel commands
+Refused: //..., :all and * wildcards in build and test (except test //src/...,
+the full unit suite upstream CI runs), other bazel commands
 (clean, shutdown, ...), other run targets, and other flags.
 EOF
 }
@@ -91,7 +94,10 @@ if [[ -f "$failure_file" ]]; then
 fi
 
 if [[ "$approved_retry" == true ]]; then
+  # Persist the reset now, so a call refused before any step runs (a bad label,
+  # the disk guard) doesn't leave the breaker tripped for the next call.
   failures=0
+  echo 0 >"$failure_file"
 elif [[ "$failures" -ge "$max_consecutive_failures" ]]; then
   echo "ERROR: the last ${failures} speck_bazel.sh calls failed, so this one is refused." >&2
   echo "Stop and report those failures to the person you are working with. Run" >&2
@@ -109,7 +115,7 @@ check_label() {
   fi
   if [[ "$label" == *...* ]] || [[ "$label" == *"*"* ]] || [[ "$label" == *:all ]] ||
     [[ "$label" == *:all-targets ]]; then
-    echo "ERROR: '$label' is a wildcard. Name the targets, or use //:all_tests." >&2
+    echo "ERROR: '$label' is a wildcard. Name the targets, or use test //src/... for the full unit suite." >&2
     exit 1
   fi
 }
@@ -323,6 +329,15 @@ build | test)
       echo "ERROR: option '$arg' is not allowed. Only --test_filter and --test_output are." >&2
       exit 1
       ;;
+    //src/...)
+      # Upstream CI's unit-test pattern; see the header.
+      if [[ "$command" != test ]]; then
+        echo "ERROR: //src/... is allowed only with test." >&2
+        exit 1
+      fi
+      label_count=$((label_count + 1))
+      bazel_args+=("$arg")
+      ;;
     *)
       check_label "$arg"
       label_count=$((label_count + 1))
@@ -356,16 +371,18 @@ preflight)
   no_args "$@"
   # The share of .bazelci/presubmit.yml a pod can run. The fork has no PR CI,
   # so this is the gate before calling a change done.
-  bazel_step test //:all_tests --test_output=errors
+  bazel_step test //src/... --test_output=errors
   ktlint_check
   docs_check
   not_run="//examples:all integration tests, RBE, and the macOS/Windows matrix"
-  if command -v buildifier >/dev/null 2>&1; then
+  # buildifier_step uses buildifier on PATH, else //:buildifier.check, so
+  # Starlark lint runs on any image, not only one with the binary.
+  if command -v buildifier >/dev/null 2>&1 || defines_target BUILD 'buildifier\.check'; then
     buildifier_step check
-    echo "==> preflight passed: //:all_tests, ktlint, the docs check and buildifier."
+    echo "==> preflight passed: //src/..., ktlint, the docs check and buildifier."
   else
     not_run="buildifier (not on this image), ${not_run}"
-    echo "==> preflight passed: //:all_tests, ktlint and the docs check."
+    echo "==> preflight passed: //src/..., ktlint and the docs check."
   fi
   echo "    Not run: ${not_run}."
   ;;

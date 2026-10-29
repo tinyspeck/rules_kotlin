@@ -36,12 +36,8 @@ services:
         # No credentials to install: rules_kotlin fetches only public Maven and
         # GitHub artifacts, so there is no run.sh like slack-android-ng's.
         command: ["sleep", "infinity"]
+    # No consul-template block: nothing here uses a slauth identity token, and
+    # anything rendered into the pod is readable by the agent (least privilege).
     nebula:
       - port: 5000
         groups: [dev]
-    consul-template:
-      ctmpl_files:
-        oidc-slauth-identity-token: |
-          {{ with secret "identity/oidc/token/slauth-dev" -}}
-            {{ .Data.token }}
-          {{- end }}
