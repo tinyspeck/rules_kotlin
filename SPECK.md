@@ -31,21 +31,25 @@ as `devspace/speck_bazel.sh ...`, with no `./` prefix: the allowlist matches the
 command literally. Run it with no arguments for its usage. The main commands:
 
 - `test <label> ... [--test_filter=...] [--test_output=errors]`, `build`, `query`
-- `preflight`: `//:all_tests`, ktlint, the docs check, and buildifier when the image has it
+- `preflight`: `test //src/...`, ktlint, the docs check, and buildifier (on PATH or through `//:buildifier.check`)
 - `ktlint-check`, `ktlint-fix`, `docs-check`, `docs-regen`, `buildifier-check`, `buildifier-fix`
 - `shellcheck`, `bats`: for changes to the script itself
 - `archive-integrity <sha>`: the slack-android-ng pin for a pushed commit
 
-Labels must be explicit (no `//...`, `:all`, `*`); `//:all_tests` is the full
-unit suite. You do not need it for searching: `rg`, `fd` and file tools work
-from the sidecar, and git goes through the git tools.
+Labels must be explicit (no `//...`, `:all`, `*`), except `test //src/...`, the
+full unit suite upstream CI runs. `//:all_tests` is only the Kotlin suites
+(assertion, builder, worker, convert, resource_strip_prefix); it leaves out the
+Starlark analysis tests under `src/test/starlark` (including the KSP and
+compile-pipeline ones), so for Starlark or rule changes run those packages'
+suites or `test //src/...`. You do not need the script for searching: `rg`,
+`fd` and file tools work from the sidecar, and git goes through the git tools.
 
 ## Scope and time
 
 Run the narrowest target that covers the change first, then widen. `exec`
 stops a command after 530 seconds; the first build on a fresh pod downloads
 Bazel, the Kotlin compiler and Maven artifacts and can take longer, so run
-`preflight`, `//:all_tests` and any first build with `exec_background`.
+`preflight`, `test //src/...` and any first build with `exec_background`.
 
 ## When it fails
 
@@ -58,7 +62,8 @@ fails, report it; do not change repository URLs to get around it.
 
 Some failures are the image, not your change: until pods move to the
 rules_kotlin image (see `devspaces.yaml`), there is no C++ compiler, buildifier
-or BATS on the pod, so targets that compile C++ or those subcommands fail.
+binary or BATS on the pod, so targets that compile C++ and the `bats`
+subcommand fail (buildifier falls back to `//:buildifier.check`).
 Say which it was.
 
 ## Verifying in Slack Android

@@ -49,7 +49,8 @@ branches share upstream's targets:
 
 | Task | Command |
 | --- | --- |
-| Unit tests | `bazel test //:all_tests` (upstream CI runs `//src/...`) |
+| Unit tests (full, as upstream CI) | `bazel test //src/...` |
+| Kotlin suites only | `bazel test //:all_tests` (no Starlark analysis tests) |
 | ktlint check | `bazel test //... --test_tag_filters=ktlint --build_tests_only` |
 | ktlint fix | `bazel run //:ktlint_fix_all` |
 | Docs regen | `bazel run //docs:write_docs` |
@@ -71,9 +72,9 @@ ran in the PR, as evidence a reviewer can weigh:
 | Builder Kotlin (`src/main/kotlin/`) | the package's tests under `src/test/kotlin/`, then ktlint check |
 | Rules / Starlark (`kotlin/`, `src/main/starlark/`) | the matching assertion and Starlark tests, the docs check, buildifier check |
 | Public rule attributes or docstrings | docs regen, then the docs check |
-| Tool versions (`versions.bzl`, `MODULE.bazel`) | `//:all_tests` |
+| Tool versions (`versions.bzl`, `MODULE.bazel`) | `//src/...` |
 | `devspace/speck_bazel.sh` | shellcheck and `bats devspace/test` |
-| Anything before review | `//:all_tests` + ktlint + docs (the `preflight` set) |
+| Anything before review | `//src/...` + ktlint + docs + buildifier (the `preflight` set) |
 
 Not runnable locally: the `//examples:all` integration tests (RBE, Android
 NDK), the macOS/Windows matrix, and the release workflow. Say so in the PR

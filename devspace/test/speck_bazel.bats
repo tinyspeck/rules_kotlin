@@ -110,6 +110,23 @@ failures() {
   [ "$(failures)" -eq 0 ]
 }
 
+@test "test //src/... (upstream CI's unit pattern) is allowed, build //src/... is not" {
+  run "$script" test //src/... --test_output=errors
+  [ "$status" -eq 0 ]
+  grep -qx 'test --disk_cache= //src/... --test_output=errors' "${BATS_TEST_TMPDIR}/bazel_calls"
+  run "$script" build //src/...
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"allowed only with test"* ]]
+}
+
+@test "an approved retry that is then refused still resets the breaker" {
+  mkdir -p "${XDG_CACHE_HOME}/speck_bazel"
+  echo 2 >"${XDG_CACHE_HOME}/speck_bazel/consecutive_failures"
+  run "$script" --user-approved-retry test //...
+  [ "$status" -eq 1 ]
+  [ "$(failures)" -eq 0 ]
+}
+
 @test "a passing query does not clear the breaker" {
   mkdir -p "${XDG_CACHE_HOME}/speck_bazel"
   echo 1 >"${XDG_CACHE_HOME}/speck_bazel/consecutive_failures"
