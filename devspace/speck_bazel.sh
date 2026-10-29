@@ -245,6 +245,9 @@ buildifier_step() {
     fi
     run_step true buildifier "${args[@]}" -r .
   elif defines_target BUILD "buildifier\\.${mode}"; then
+    # Stricter than CI: the target keeps buildifier's default warnings on
+    # (only +unsorted-dict-items is added), while presubmit.yml turns ~17 off.
+    echo "NOTE: no buildifier on PATH; //:buildifier.${mode} warns on more than CI does." >&2
     bazel_step run "//:buildifier.${mode}"
   else
     echo "ERROR: no buildifier on this image and no //:buildifier.${mode} target on this branch." >&2
@@ -375,9 +378,11 @@ preflight)
   ktlint_check
   docs_check
   not_run="//examples:all integration tests, RBE, and the macOS/Windows matrix"
-  # buildifier_step uses buildifier on PATH, else //:buildifier.check, so
-  # Starlark lint runs on any image, not only one with the binary.
-  if command -v buildifier >/dev/null 2>&1 || defines_target BUILD 'buildifier\.check'; then
+  # Only with buildifier on PATH, which gets CI's warnings list. The
+  # //:buildifier.check fallback leaves on ~17 warnings presubmit.yml turns
+  # off, so here it would fail on lint CI ignores (and count toward the
+  # breaker); without the binary, report buildifier as not run instead.
+  if command -v buildifier >/dev/null 2>&1; then
     buildifier_step check
     echo "==> preflight passed: //src/..., ktlint, the docs check and buildifier."
   else
