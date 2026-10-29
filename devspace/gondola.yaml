@@ -1,0 +1,42 @@
+version: "1"
+
+# Image-only Gondola pipeline for the rules_kotlin DevSpace Pod image
+# (devspace/Dockerfile). It builds and syncs the image so Checkpoint can use it
+# as tinyspeck/rules_kotlin:rules-kotlin-devspace; it deploys nothing. Same
+# shape as slack/promcfg's devspace/gondola.yaml.
+#
+# Paths below are relative to this file's directory, with a leading `/`
+# meaning the repo root.
+#
+# Register it once (needs admin on the repo), then each push rebuilds it:
+#
+#   gondolier create pipeline \
+#     -r github.com/tinyspeck/rules_kotlin \
+#     -n rules-kotlin-devspace \
+#     -s 6b2e0288-9873-477f-861a-9b8cae92ac6d \
+#     --default-branch master \
+#     -g devspace/gondola.yaml
+#
+# After the first build succeeds, point devspaces.yaml's `image:` at
+# tinyspeck/rules_kotlin:rules-kotlin-devspace. Checkpoint only accepts image
+# keys Gondola tracks, so switching before then breaks every pod on the branch.
+
+images:
+  - name: rules-kotlin-devspace
+    context: /
+    dockerfile: /devspace/Dockerfile
+    jsonlogs: true
+    platform: linux/amd64
+    devspace:
+      # Keep Gondola's DevSpace post-processing (the tooling pods attach with),
+      # as slack-android-ng's and Talos's DevSpace images do.
+      disable_post_process: false
+
+pipelines:
+  - name: rules-kotlin-devspace
+    # Checkpoint's shared DevSpace Pod identity, the same one devspaces.yaml uses.
+    omni_service_id: 6b2e0288-9873-477f-861a-9b8cae92ac6d
+    stage_groups:
+      - stages:
+          - syncimage/v1:
+              partition: com
