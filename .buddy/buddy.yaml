@@ -1,0 +1,21 @@
+# slack-buddy code review for the tinyspeck rules_kotlin fork.
+# Reviews ready PRs only, like slack-android-ng: drafts are works in progress.
+name: "rules_kotlin (tinyspeck fork) code review"
+
+defaults:
+  builtin_agents:
+    - code_quality
+    - architecture
+    - documentation
+  delivery_methods:
+    - github
+  review_on:
+    - opened_on_ready
+    - ready_for_review
+  notification_style: minimal
+  # Generated files: reviewing them repeats the review of their source.
+  ignore_paths:
+    - "glob:docs/kotlin.md"
+    - "glob:kotlin_rules_maven_install.json"
+    - "glob:kotlin_rules_maven_test_install.json"
+    - "glob:MODULE.bazel.lock"
