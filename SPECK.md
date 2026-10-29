@@ -31,7 +31,7 @@ as `devspace/speck_bazel.sh ...`, with no `./` prefix: the allowlist matches the
 command literally. Run it with no arguments for its usage. The main commands:
 
 - `test <label> ... [--test_filter=...] [--test_output=errors]`, `build`, `query`
-- `preflight`: `test //src/...`, ktlint, the docs check, and buildifier (on PATH or through `//:buildifier.check`)
+- `preflight`: `test //src/...`, ktlint, the docs check, and buildifier when the image has the binary (otherwise reported as not run)
 - `ktlint-check`, `ktlint-fix`, `docs-check`, `docs-regen`, `buildifier-check`, `buildifier-fix`
 - `shellcheck`, `bats`: for changes to the script itself
 - `archive-integrity <sha>`: the slack-android-ng pin for a pushed commit
@@ -63,7 +63,9 @@ fails, report it; do not change repository URLs to get around it.
 Some failures are the image, not your change: until pods move to the
 rules_kotlin image (see `devspaces.yaml`), there is no C++ compiler, buildifier
 binary or BATS on the pod, so targets that compile C++ and the `bats`
-subcommand fail (buildifier falls back to `//:buildifier.check`).
+subcommand fail, and `preflight` skips buildifier. `buildifier-check` then falls
+back to `//:buildifier.check`, which warns on more than CI does; treat
+warnings on lines you didn't touch as pre-existing, not as failures.
 Say which it was.
 
 ## Verifying in Slack Android
