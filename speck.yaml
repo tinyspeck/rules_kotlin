@@ -1,0 +1,34 @@
+# Speck configuration for this repo.
+#
+# Read from the default branch (master), so a feature branch cannot widen it:
+# these entries take effect once this file is on master. SPECK.md is read the
+# same way. devspaces.yaml, by contrast, is read at the branch's own commit.
+#
+# No `verified_in_ci_only` (slack-android-ng sets it): that flag sends Speck to
+# CI for verification, and this fork has no PR CI. .github/workflows only runs
+# on release tags, and .bazelci/ runs on upstream's BazelCI, not here. The pod
+# is what verifies a rules_kotlin change, and slack-android-ng's Bazel CI
+# verifies it as a consumer after a pin bump (see SPECK.md).
+
+# Commands Speck may run on a DevSpace Pod, per container.
+#
+# Speck runs in a sidecar that shares the /mnt/devspace checkout with the
+# `devspace` container but carries none of the toolchain. Reading, editing and
+# searching (rg, fd) already work from the sidecar, and git goes through Speck's
+# own git tools, so the only commands listed here are the ones that need the
+# toolchain.
+#
+# Everything goes through devspace/speck_bazel.sh, which checks each call before
+# running it (explicit labels, a short flag allowlist, a disk check, a failure
+# breaker). Entries match the command literally, so Speck must call it as
+# `devspace/speck_bazel.sh ...`, without a leading `./`.
+#
+# These entries are not a sandbox: speck_bazel.sh and every BUILD and .bzl file
+# Bazel evaluates sit in the checkout Speck can edit. What the script limits is
+# disk and time, not what code runs.
+allowed_commands:
+  containers:
+    # Must match the container name in devspaces.yaml.
+    devspace:
+      bash:
+        - "devspace/speck_bazel.sh:*"
