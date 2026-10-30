@@ -68,6 +68,10 @@ class IncrementalCompilationTest : BazelIntegrationTestBase() {
       "--override_module=rules_kotlin=$release",
       "--@rules_kotlin//kotlin/settings:experimental_build_tools_api=true",
       "--define=kt_trace=1",
+      // --ignore_all_rc_files drops the repo's remotejdk settings, and the default local_jdk
+      // fails on machines without a system JDK.
+      "--java_runtime_version=remotejdk_17",
+      "--tool_java_runtime_version=remotejdk_17",
     )
   }
 
