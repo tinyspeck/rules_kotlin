@@ -19,7 +19,6 @@ def _resolve_kapt_cfg(
         expand_location,  # @unused Needed for lambda contract.
         data = depset()):
     infos = []
-    plugins = []
     for d in deps:
         if JavaInfo in d:
             infos.append(d[JavaInfo])
@@ -63,7 +62,7 @@ def _resolve_kapt_cfg(
             classpath = classpath,
             data = data_files,
         ),
-    ] + plugins
+    ]
 
 def _kapt_compiler_plugin_impl(ctx):
     plugin_id = ctx.attr.id
