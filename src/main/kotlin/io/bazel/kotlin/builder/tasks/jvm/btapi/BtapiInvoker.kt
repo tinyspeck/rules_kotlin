@@ -19,10 +19,12 @@ package io.bazel.kotlin.builder.tasks.jvm.btapi
 import io.bazel.kotlin.compiler.CompilationUnit
 import io.bazel.kotlin.compiler.CompilerConfiguration
 import io.bazel.kotlin.compiler.CompilerPluginSpec
+import io.bazel.kotlin.compiler.IncrementalCompilationSpec
 import io.bazel.kotlin.compiler.KotlinBtapiCompiler
 import java.io.PrintStream
 import java.lang.invoke.MethodHandle
 import java.lang.invoke.MethodHandles
+import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 import kotlin.reflect.jvm.javaMethod
 
@@ -36,9 +38,11 @@ class BtapiInvoker(
 ) : KotlinBtapiCompiler {
   private val compilerImpl: Any
   private val execHandle: MethodHandle
+  private val snapshotHandle: MethodHandle
   private val compilationUnitDispatcher = Dispatcher(CompilationUnit::class.java)
   private val configurationDispatcher = Dispatcher(CompilerConfiguration::class.java)
   private val pluginDispatcher = Dispatcher(CompilerPluginSpec::class.java)
+  private val incrementalCompilationDispatcher = Dispatcher(IncrementalCompilationSpec::class.java)
 
   init {
     val compilerClass = btapiClassLoader.loadClass("io.bazel.kotlin.compiler.BuildToolsAPICompiler")
@@ -51,13 +55,11 @@ class BtapiInvoker(
           .newInstance(btImplClasspath as Any),
       )
 
-    val execMethod = checkNotNull(KotlinBtapiCompiler::exec.javaMethod)
     execHandle =
-      MethodHandles.lookup().unreflect(
-        compilerInterface.getMethod(
-          execMethod.name,
-          *execMethod.parameterTypes.map { it.counterpart() }.toTypedArray(),
-        ),
+      compilerInterface.counterpartHandle(checkNotNull(KotlinBtapiCompiler::exec.javaMethod))
+    snapshotHandle =
+      compilerInterface.counterpartHandle(
+        checkNotNull(KotlinBtapiCompiler::snapshotClasspathEntry.javaMethod),
       )
   }
 
@@ -66,6 +68,7 @@ class BtapiInvoker(
     compilationUnit: CompilationUnit,
     configuration: CompilerConfiguration,
     plugins: List<CompilerPluginSpec>,
+    incrementalCompilation: IncrementalCompilationSpec?,
   ): Int =
     execHandle.invoke(
       compilerImpl,
@@ -73,7 +76,22 @@ class BtapiInvoker(
       compilationUnitDispatcher.applyTo(compilationUnit),
       configurationDispatcher.applyTo(configuration),
       plugins.map(pluginDispatcher::applyTo),
+      incrementalCompilation?.let(incrementalCompilationDispatcher::applyTo),
     ) as Int
+
+  override fun snapshotClasspathEntry(
+    classpathEntry: String,
+    snapshot: String,
+    classLevelGranularity: Boolean,
+  ) {
+    snapshotHandle.invoke(compilerImpl, classpathEntry, snapshot, classLevelGranularity)
+  }
+
+  /** The handle of the counterpart interface's method matching [method]. */
+  private fun Class<*>.counterpartHandle(method: Method): MethodHandle =
+    MethodHandles.lookup().unreflect(
+      getMethod(method.name, *method.parameterTypes.map { it.counterpart() }.toTypedArray()),
+    )
 
   /**
    * The class's counterpart defined by the BTA implementation classloader

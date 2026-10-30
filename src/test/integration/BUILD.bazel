@@ -31,3 +31,32 @@ bazel_integration_test(
     ],
     test_runner = ":toolchain_loading_test_runner",
 )
+
+kt_jvm_test(
+    name = "incremental_compilation_test_runner",
+    srcs = ["IncrementalCompilationTest.kt"],
+    # Run through bazel_integration_test, which supplies the Bazel launcher.
+    tags = ["manual"],
+    test_class = "io.bazel.kotlin.integration.IncrementalCompilationTest",
+    deps = [
+        "//src/main/kotlin/io/bazel/kotlin/test:test_base",
+        "@com_google_protobuf//:protobuf_java",
+        "@com_google_protobuf//:protobuf_java_util",
+        "@kotlin_rules_maven_test//:junit_junit",
+    ],
+)
+
+bazel_integration_test(
+    name = "incremental_compilation_test",
+    bazel_binaries = bazel_binaries,
+    bazel_version = bazel_binaries.versions.current,
+    data = ["//:rules_kotlin_release"],
+    env = {
+        "RULES_KOTLIN_RELEASE": "$(rlocationpath //:rules_kotlin_release)",
+    },
+    tags = [
+        "no-remote",
+        "requires-network",
+    ],
+    test_runner = ":incremental_compilation_test_runner",
+)

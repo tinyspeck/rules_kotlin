@@ -45,14 +45,51 @@ interface CompilerPluginSpec {
 }
 
 /**
+ * The snapshot-based incremental compilation of a [CompilationUnit] whose destination holds the
+ * outputs of the previous successful compilation.
+ */
+interface IncrementalCompilationSpec {
+  /** The directory the incremental compiler keeps its caches in. */
+  val workingDirectory: String
+
+  /**
+   * Whether [modifiedSources] and [removedSources] describe every source change since the previous
+   * successful compilation. When false, the compiler rebuilds the unit from scratch and records
+   * the state the following compilations are incremental against.
+   */
+  val sourceChangesKnown: Boolean
+  val modifiedSources: List<String>
+  val removedSources: List<String>
+
+  /** The classpath entry snapshots (see [KotlinBtapiCompiler.snapshotClasspathEntry]), in classpath order. */
+  val classpathSnapshots: List<String>
+
+  /** Directories cleaned together with the destination when the compiler falls back to a rebuild. */
+  val additionalOutputDirectories: List<String>
+}
+
+/**
  * The typed Build Tools API compilation contract between the worker and the compiler classloader.
  * Provides structured API to invoke compiler as an in-process utility.
  */
 interface KotlinBtapiCompiler {
+  /** Compiles the unit; incrementally when [incrementalCompilation] is given. */
   fun exec(
     errStream: PrintStream,
     compilationUnit: CompilationUnit,
     configuration: CompilerConfiguration,
     plugins: List<CompilerPluginSpec>,
+    incrementalCompilation: IncrementalCompilationSpec?,
   ): Int
+
+  /**
+   * Writes the incremental compilation snapshot of one classpath entry (a jar or a class
+   * directory) to [snapshot]. Class-level granularity yields smaller snapshots and suits rarely
+   * changing entries; member-level granularity recompiles less when the entry changes.
+   */
+  fun snapshotClasspathEntry(
+    classpathEntry: String,
+    snapshot: String,
+    classLevelGranularity: Boolean,
+  )
 }

@@ -34,7 +34,18 @@ class CompilationTaskContext(
       .getPath("")
       .toAbsolutePath()
       .toString() + File.separator,
+  /**
+   * The digests Bazel sent with the work request, as hex strings by execroot-relative input path.
+   * Empty outside the persistent worker protocol.
+   */
+  val inputDigests: Map<String, String> = emptyMap(),
 ) {
+  constructor(
+    info: CompilationTaskInfo,
+    out: PrintStream,
+    executionRoot: String,
+  ) : this(info, out, executionRoot, emptyMap())
+
   private val start = System.currentTimeMillis()
   private var timings: MutableList<String>?
   private var level = -1

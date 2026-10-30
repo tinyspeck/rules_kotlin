@@ -15,11 +15,13 @@
  */
 package io.bazel.kotlin.compiler
 
+import org.jetbrains.kotlin.buildtools.api.BaseIncrementalCompilationConfiguration
 import org.jetbrains.kotlin.buildtools.api.CompilationResult
 import org.jetbrains.kotlin.buildtools.api.ExperimentalBuildToolsApi
 import org.jetbrains.kotlin.buildtools.api.KotlinLogger
 import org.jetbrains.kotlin.buildtools.api.KotlinToolchains
 import org.jetbrains.kotlin.buildtools.api.SharedApiClassesClassLoader
+import org.jetbrains.kotlin.buildtools.api.SourcesChanges
 import org.jetbrains.kotlin.buildtools.api.arguments.CommonCompilerArguments
 import org.jetbrains.kotlin.buildtools.api.arguments.CompilerPlugin
 import org.jetbrains.kotlin.buildtools.api.arguments.CompilerPluginOption
@@ -28,10 +30,14 @@ import org.jetbrains.kotlin.buildtools.api.arguments.JvmCompilerArguments
 import org.jetbrains.kotlin.buildtools.api.arguments.enums.JdkRelease
 import org.jetbrains.kotlin.buildtools.api.arguments.enums.JvmTarget
 import org.jetbrains.kotlin.buildtools.api.getToolchain
+import org.jetbrains.kotlin.buildtools.api.jvm.ClassSnapshotGranularity
 import org.jetbrains.kotlin.buildtools.api.jvm.JvmPlatformToolchain
+import org.jetbrains.kotlin.buildtools.api.jvm.operations.JvmClasspathSnapshottingOperation
+import org.jetbrains.kotlin.buildtools.api.jvm.operations.JvmCompilationOperation
 import java.io.File
 import java.io.PrintStream
 import java.net.URLClassLoader
+import java.nio.file.Path
 import java.nio.file.Paths
 import org.jetbrains.kotlin.buildtools.api.arguments.enums.KotlinVersion as BtapiKotlinVersion
 
@@ -91,6 +97,7 @@ class BuildToolsAPICompiler(
     compilationUnit: CompilationUnit,
     configuration: CompilerConfiguration,
     plugins: List<CompilerPluginSpec>,
+    incrementalCompilation: IncrementalCompilationSpec?,
   ): Int {
     System.setProperty("zip.handler.uses.crc.instead.of.timestamp", "true")
 
@@ -169,6 +176,15 @@ class BuildToolsAPICompiler(
         compilationUnit.friendPaths.map { Paths.get(File(it).absolutePath) }
     }
 
+    if (incrementalCompilation != null) {
+      operationBuilder[JvmCompilationOperation.INCREMENTAL_COMPILATION] =
+        incrementalConfiguration(
+          operationBuilder,
+          Paths.get(compilationUnit.destination),
+          incrementalCompilation,
+        )
+    }
+
     val result =
       runtime.kotlinToolchains.createBuildSession().use { session ->
         session.executeOperation(
@@ -178,6 +194,56 @@ class BuildToolsAPICompiler(
       }
 
     return runtime.exitCodes.getValue(result)
+  }
+
+  private fun incrementalConfiguration(
+    operationBuilder: JvmCompilationOperation.Builder,
+    destination: Path,
+    spec: IncrementalCompilationSpec,
+  ) = operationBuilder
+    .snapshotBasedIcConfigurationBuilder(
+      workingDirectory = Paths.get(spec.workingDirectory),
+      sourcesChanges =
+        if (spec.sourceChangesKnown) {
+          SourcesChanges.Known(
+            modifiedFiles = spec.modifiedSources.map(::File),
+            removedFiles = spec.removedSources.map(::File),
+          )
+        } else {
+          SourcesChanges.Unknown
+        },
+      dependenciesSnapshotFiles = spec.classpathSnapshots.map { Paths.get(it) },
+    ).apply {
+      // A failed compilation restores the previous outputs and leaves the caches untouched, so
+      // the next compilation is incremental against the last successful one.
+      this[BaseIncrementalCompilationConfiguration.BACKUP_CLASSES] = true
+      this[BaseIncrementalCompilationConfiguration.KEEP_IC_CACHES_IN_MEMORY] = true
+      this[BaseIncrementalCompilationConfiguration.OUTPUT_DIRS] =
+        setOf(destination, Paths.get(spec.workingDirectory)) +
+        spec.additionalOutputDirectories.map { Paths.get(it) }
+    }.build()
+
+  override fun snapshotClasspathEntry(
+    classpathEntry: String,
+    snapshot: String,
+    classLevelGranularity: Boolean,
+  ) {
+    val operation =
+      runtime.kotlinToolchains
+        .getToolchain<JvmPlatformToolchain>()
+        .classpathSnapshottingOperationBuilder(Paths.get(classpathEntry))
+        .apply {
+          this[JvmClasspathSnapshottingOperation.GRANULARITY] =
+            if (classLevelGranularity) {
+              ClassSnapshotGranularity.CLASS_LEVEL
+            } else {
+              ClassSnapshotGranularity.CLASS_MEMBER_LEVEL
+            }
+        }.build()
+    runtime.kotlinToolchains
+      .createBuildSession()
+      .use { session -> session.executeOperation(operation) }
+      .saveSnapshot(Paths.get(snapshot))
   }
 
   private fun requireJvmTarget(target: String): JvmTarget {

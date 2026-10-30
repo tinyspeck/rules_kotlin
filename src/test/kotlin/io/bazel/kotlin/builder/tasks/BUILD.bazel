@@ -61,6 +61,22 @@ kt_rules_test(
 )
 
 kt_rules_test(
+    name = "KotlinBuilderIncrementalCompilationTest",
+    srcs = ["KotlinBuilderIncrementalCompilationTest.kt"],
+    deps = [
+        "//src/main/kotlin/io/bazel/kotlin/builder/tasks",
+        "//src/main/kotlin/io/bazel/worker",
+        "@kotlin_rules_maven_test//:com_google_truth_truth",
+        "@kotlin_rules_maven_test//:junit_junit",
+    ],
+)
+
+kt_rules_test(
+    name = "KotlinBuilderJvmBtaIncrementalTest",
+    srcs = ["jvm/KotlinBuilderJvmBtaIncrementalTest.java"],
+)
+
+kt_rules_test(
     name = "KotlinBuilderJvmBtaTest",
     srcs = ["jvm/KotlinBuilderJvmBtaTest.java"],
     data = [
@@ -205,8 +221,10 @@ test_suite(
         ":JdepsMergerTest",
         ":JdepsParserTest",
         ":KotlinBuilderBuildTest",
+        ":KotlinBuilderIncrementalCompilationTest",
         ":KotlinBuilderJvmAbiTest",
         ":KotlinBuilderJvmBasicTest",
+        ":KotlinBuilderJvmBtaIncrementalTest",
         ":KotlinBuilderJvmBtaTest",
         ":KotlinBuilderJvmCoverageTest",
         ":KotlinBuilderJvmJdepsTest",
