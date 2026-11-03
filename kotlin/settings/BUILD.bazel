@@ -72,3 +72,14 @@ bool_flag(
     build_setting_default = False,
     visibility = ["//visibility:public"],
 )
+
+# --@rules_kotlin//kotlin/settings:ksp2_jvm_flags=-Xmx12g,-XX:MaxMetaspaceSize=8g
+# JVM flags for the KSP2 worker process itself, for example heap and Metaspace
+# caps. Bazel's --worker_extra_flag is applied by its local worker runner, so it
+# never reaches a remote persistent worker; these flags are put on the KSP2
+# launcher's own command line instead and so travel with the remote action.
+string_list_flag(
+    name = "ksp2_jvm_flags",
+    build_setting_default = [],
+    visibility = ["//visibility:public"],
+)
