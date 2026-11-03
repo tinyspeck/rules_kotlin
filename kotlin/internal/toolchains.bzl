@@ -82,6 +82,7 @@ def _kotlin_toolchain_impl(ctx):
         jdeps_merger = ctx.attr.jdeps_merger,
         ksp2 = ctx.attr.ksp2,
         ksp2_invoker = ctx.attr.ksp2_invoker,
+        ksp2_jvm_flags = ctx.attr._ksp2_jvm_flags[BuildSettingInfo].value,
         kotlin_home = ctx.attr.kotlin_home,
         jvm_stdlibs = java_common.merge(compile_time_providers + runtime_providers),
         jvm_emit_jdeps = ctx.attr._jvm_emit_jdeps[BuildSettingInfo].value,
@@ -379,6 +380,13 @@ _kt_toolchain = rule(
             default = Label("//kotlin/settings:experimental_strict_associate_dependencies"),
         ),
         "_jvm_emit_jdeps": attr.label(default = "//kotlin/settings:jvm_emit_jdeps"),
+        "_ksp2_jvm_flags": attr.label(
+            doc = """JVM flags for the KSP2 worker process itself, for example heap and Metaspace
+            caps. Bazel's --worker_extra_flag is applied by its local worker runner and so never
+            reaches a remote persistent worker; these flags go on the KSP2 launcher's own command
+            line instead, which makes them part of the remote action.""",
+            default = Label("//kotlin/settings:ksp2_jvm_flags"),
+        ),
     },
     implementation = _kotlin_toolchain_impl,
     provides = [platform_common.ToolchainInfo],
