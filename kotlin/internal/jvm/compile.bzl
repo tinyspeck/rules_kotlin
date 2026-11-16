@@ -571,6 +571,23 @@ def _run_ksp_builder_actions(
     if ksp_opts:
         args.add_all("--ksp_opts", _utils.dict_to_option_list(ksp_opts))
 
+    # Slack: JVM flags for the KSP2 worker process itself (heap and Metaspace
+    # caps). Bazel's --worker_extra_flag is applied by its local worker runner
+    # when it builds the worker command line, so it never reaches a worker that
+    # runs remotely. Putting the flags here makes them part of the action, so
+    # they apply to local and remote workers alike.
+    #
+    # --wrapper_script_flag= is required rather than a bare --jvm_flag=: the
+    # java_binary launcher stops interpreting bare wrapper arguments at the
+    # first argument it does not recognise, and Bazel appends --persistent_worker
+    # to the worker command line.
+    pre_flagfile_args = ctx.actions.args()
+    pre_flagfile_args.add_all(toolchains.kt.builder_args)
+    pre_flagfile_args.add_all(
+        toolchains.kt.ksp2_jvm_flags,
+        format_each = "--wrapper_script_flag=--jvm_flag=%s",
+    )
+
     # Run KSP2 via dedicated worker (separate from kotlinc worker)
     # Single action: staging + KSP2 + packaging all happen in the worker
     ctx.actions.run(
@@ -595,7 +612,7 @@ def _run_ksp_builder_actions(
             {"worker-key-mnemonic": "KotlinKsp2"},
         ),
         arguments = [
-            ctx.actions.args().add_all(toolchains.kt.builder_args),
+            pre_flagfile_args,
             args,
         ],
         progress_message = "Running KSP2 for %{label}",
